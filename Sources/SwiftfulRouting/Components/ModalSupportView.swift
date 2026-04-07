@@ -35,7 +35,7 @@ struct ModalSupportView: View {
                                     backgroundColor
                                 }
                                 if let backgroundEffect = modal.backgroundEffect {
-                                    UIIntensityVisualEffectViewRepresentable(effect: backgroundEffect.effect, intensity: backgroundEffect.intensity)
+                                    IntensityVisualEffectViewRepresentable(backgroundEffect: backgroundEffect)
                                 }
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)

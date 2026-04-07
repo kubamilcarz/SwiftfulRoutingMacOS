@@ -6,6 +6,12 @@
 //
 import SwiftUI
 
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
 struct SwipeBackSupportContainer<Content:View>: View {
 
     var insertionTransition: TransitionOption = .trailing()
@@ -210,14 +216,14 @@ private struct DragGestureViewModifier: ViewModifier {
     }
 
     private func getRotation(translation: CGSize) -> CGFloat {
-        let max = UIScreen.main.bounds.width / 2
-        let percentage = translation.width * rotationMultiplier / max
+        let maxDistance = max(referenceScreenWidth / 2, 1)
+        let percentage = translation.width * rotationMultiplier / maxDistance
         let maxRotation: CGFloat = 10
         return percentage * maxRotation
     }
 
     private func getScale(translation: CGSize) -> CGFloat {
-        let max = UIScreen.main.bounds.width / 2
+        let maxDistance = max(referenceScreenWidth / 2, 1)
         
         var offsetAmount: CGFloat = 0
         switch axes {
@@ -229,10 +235,20 @@ private struct DragGestureViewModifier: ViewModifier {
             offsetAmount = (abs(translation.width + lastOffset.width) + abs(translation.height + lastOffset.height)) / 2
         }
 
-        let percentage = offsetAmount * scaleMultiplier / max
+        let percentage = offsetAmount * scaleMultiplier / maxDistance
         let minScale: CGFloat = 0.8
         let range = 1 - minScale
         return 1 - (range * percentage)
+    }
+
+    private var referenceScreenWidth: CGFloat {
+        #if canImport(UIKit)
+        UIScreen.main.bounds.width
+        #elseif canImport(AppKit)
+        NSScreen.main?.frame.width ?? 1000
+        #else
+        1000
+        #endif
     }
 
 }

@@ -7,6 +7,10 @@
 import Foundation
 import SwiftUI
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 public enum EnvironmentBackgroundOption {
     case automatic
     case clear
@@ -17,7 +21,7 @@ extension View {
     
     @ViewBuilder
     func applyEnvironmentBackgroundIfAvailable(option: EnvironmentBackgroundOption) -> some View {
-        if #available(iOS 16.4, *) {
+        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, *) {
             switch option {
             case .automatic:
                 self
@@ -36,13 +40,14 @@ extension View {
             case .clear:
                 self
                     .background(RemoveSheetShadow())
-            case .custom(let value):
+            case .custom(_):
                 self
             }
         }
     }
 }
 
+#if canImport(UIKit)
 fileprivate struct RemoveSheetShadow: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let view = UIView(frame: .zero)
@@ -71,3 +76,10 @@ extension UIView {
         return superview?.dropShadowView
     }
 }
+#else
+fileprivate struct RemoveSheetShadow: View {
+    var body: some View {
+        Color.clear
+    }
+}
+#endif

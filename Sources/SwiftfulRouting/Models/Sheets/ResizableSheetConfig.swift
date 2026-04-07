@@ -46,9 +46,9 @@ public struct ResizableSheetConfig {
 
 public enum PresentationBackgroundInteractionBackSupport {
     case automatic, disabled, enabled
-    case enabledUpThrough(PresentationDetent)
+    case enabledUpThrough(PresentationDetentTransformable)
     
-    @available(iOS 16.4, *)
+    @available(iOS 16.4, macOS 13.3, tvOS 16.4, *)
     var backgroundInteraction: PresentationBackgroundInteraction {
         switch self {
         case .automatic:
@@ -58,7 +58,7 @@ public enum PresentationBackgroundInteractionBackSupport {
         case .enabled:
             return .enabled
         case .enabledUpThrough(let upThrough):
-            return .enabled(upThrough: upThrough)
+            return .enabled(upThrough: upThrough.asPresentationDetent)
         }
     }
 }
@@ -66,7 +66,7 @@ public enum PresentationBackgroundInteractionBackSupport {
 public enum PresentationContentInteractionBackSupport {
     case automatic, resizes, scrolls
     
-    @available(iOS 16.4, *)
+    @available(iOS 16.4, macOS 13.3, tvOS 16.4, *)
     var contentInteraction: PresentationContentInteraction {
         switch self {
         case .automatic:

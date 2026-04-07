@@ -58,7 +58,7 @@ public enum SegueOption: Equatable, CaseIterable, Hashable {
         switch self {
         case .push:
             return false
-        case .fullScreenCoverConfig(let config):
+        case .fullScreenCoverConfig(_):
             return false
         case .sheetConfig(let config):
             return config.detents != [.large]

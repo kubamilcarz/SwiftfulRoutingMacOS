@@ -8,6 +8,12 @@ import Foundation
 import SwiftUI
 import SwiftfulRecursiveUI
 
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
 struct TransitionSupportView<Content:View>: View {
     
     var behavior: TransitionMemoryBehavior = .keepPrevious
@@ -17,7 +23,15 @@ struct TransitionSupportView<Content:View>: View {
     let currentTransition: TransitionOption
     let onDidSwipeBack: () -> Void
 
-    @State private var viewFrame: CGRect = UIScreen.main.bounds
+    @State private var viewFrame: CGRect = {
+        #if canImport(UIKit)
+        UIScreen.main.bounds
+        #elseif canImport(AppKit)
+        NSScreen.main?.frame ?? .zero
+        #else
+        .zero
+        #endif
+    }()
 
     var body: some View {
         ZStack {
@@ -74,7 +88,7 @@ extension View {
     
     @ViewBuilder
     func transactionAnimationIfAvailable<T: Equatable>(value: T, transition: TransitionOption) -> some View {
-        if #available(iOS 17.0, *) {
+        if #available(iOS 17.0, macOS 14.0, tvOS 17.0, *) {
             self
                 .transaction(value: value) { transaction in
                     transaction.animation = transition.animation

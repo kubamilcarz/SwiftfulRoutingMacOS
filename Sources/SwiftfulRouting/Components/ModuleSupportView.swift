@@ -8,6 +8,12 @@ import Foundation
 import SwiftUI
 import SwiftfulRecursiveUI
 
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
 struct ModuleSupportView<Content:View>: View {
     
     @StateObject private var viewModel = ModuleViewModel()
@@ -17,7 +23,15 @@ struct ModuleSupportView<Content:View>: View {
     
     @ViewBuilder var content: (AnyRouter) -> Content
 
-    @State private var viewFrame: CGRect = UIScreen.main.bounds
+    @State private var viewFrame: CGRect = {
+        #if canImport(UIKit)
+        UIScreen.main.bounds
+        #elseif canImport(AppKit)
+        NSScreen.main?.frame ?? .zero
+        #else
+        .zero
+        #endif
+    }()
 
     var body: some View {
         ZStack {
