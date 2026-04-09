@@ -161,4 +161,41 @@ final class SwiftfulRoutingTests: XCTestCase {
         XCTAssertFalse(isStrictPrefixPath(transientPath, of: activePath))
         XCTAssertFalse(isStrictPrefixPath(activePath, of: activePath))
     }
+    
+    @MainActor
+    func testShouldIgnoreTransientPrefixShrinkReturnsTrueForImmediateGuardedShrink() {
+        let now = Date()
+        let activePath = ["screen_A"]
+        let newPath: [String] = []
+        let guardValue = (sourcePath: ["screen_A"], createdAt: now)
+        
+        XCTAssertTrue(
+            shouldIgnoreTransientPrefixShrink(
+                activePath: activePath,
+                newPath: newPath,
+                guardValue: guardValue,
+                maxInterval: 0.5,
+                now: now
+            )
+        )
+    }
+    
+    @MainActor
+    func testShouldIgnoreTransientPrefixShrinkReturnsFalseWhenGuardExpired() {
+        let now = Date()
+        let activePath = ["screen_A"]
+        let newPath: [String] = []
+        let expiredGuardDate = now.addingTimeInterval(-1.0)
+        let guardValue = (sourcePath: ["screen_A"], createdAt: expiredGuardDate)
+        
+        XCTAssertFalse(
+            shouldIgnoreTransientPrefixShrink(
+                activePath: activePath,
+                newPath: newPath,
+                guardValue: guardValue,
+                maxInterval: 0.5,
+                now: now
+            )
+        )
+    }
 }

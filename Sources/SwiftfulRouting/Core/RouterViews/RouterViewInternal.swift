@@ -20,6 +20,8 @@ struct RouterViewInternal<Content: View>: View, Router {
     
     @State private var uiNavigationPath: [String] = []
     @State private var uiPathCallbacksToIgnore: Int = 0
+    @State private var destinationCacheByRouteId: [String: AnyDestination] = [:]
+    @State private var transientPrefixShrinkGuard: (sourcePath: [String], createdAt: Date)? = nil
 
     private var currentRouter: AnyRouter {
         AnyRouter(id: routerId, rootRouterId: rootRouterInfo?.id ?? "", object: self)
@@ -160,11 +162,25 @@ struct RouterViewInternal<Content: View>: View, Router {
             return destination
         }
         
-        return viewModel.activeScreenStacks.allScreens.last(where: { $0.id == routeId })
+        if let destination = viewModel.activeScreenStacks.allScreens.last(where: { $0.id == routeId }) {
+            return destination
+        }
+        
+        return destinationCacheByRouteId[routeId]
     }
     
     private func syncUIPathWithModelIfNeeded(reason: String) {
-        let modelPath = activePushPathRouteIdsFromModel
+        let modelDestinations = activePushPathFromModel
+        cacheDestinations(modelDestinations)
+        
+        let modelPath = modelDestinations.map(\.id)
+        
+        if modelPath.count > uiNavigationPath.count {
+            transientPrefixShrinkGuard = (sourcePath: modelPath, createdAt: Date())
+        } else if transientPrefixShrinkGuard?.sourcePath != modelPath {
+            transientPrefixShrinkGuard = nil
+        }
+        
         guard uiNavigationPath != modelPath else { return }
         
         uiPathCallbacksToIgnore += 1
@@ -191,6 +207,22 @@ struct RouterViewInternal<Content: View>: View, Router {
         
         // Accept only valid user pop gestures: strict-prefix shrink.
         if isStrictPrefixPath(newPath, of: activePath) {
+            if shouldIgnoreTransientPrefixShrink(
+                activePath: activePath,
+                newPath: newPath,
+                guardValue: transientPrefixShrinkGuard
+            ) {
+                #if DEBUG
+                print("SwiftfulRouting path transient pop ignored: \(routerId) \(activePath) -> \(newPath)")
+                #endif
+                
+                transientPrefixShrinkGuard = nil
+                syncUIPathWithModelIfNeeded(reason: "ignored_transient_prefix_shrink")
+                return
+            }
+            
+            transientPrefixShrinkGuard = nil
+            
             #if DEBUG
             print("SwiftfulRouting path pop accepted: \(routerId) \(activePath) -> \(newPath)")
             #endif
@@ -209,6 +241,12 @@ struct RouterViewInternal<Content: View>: View, Router {
         print("SwiftfulRouting path transient ignored: \(routerId) \(activePath) -> \(newPath)")
         #endif
         syncUIPathWithModelIfNeeded(reason: "transient_ui_callback")
+    }
+    
+    private func cacheDestinations(_ destinations: [AnyDestination]) {
+        for destination in destinations {
+            destinationCacheByRouteId[destination.id] = destination
+        }
     }
             
     var activeScreens: [AnyDestinationStack] {
@@ -428,6 +466,25 @@ func isStrictPrefixPath<T: Equatable>(_ candidate: [T], of activePath: [T]) -> B
         if candidate[index] != activePath[index] {
             return false
         }
+    }
+    
+    return true
+}
+
+func shouldIgnoreTransientPrefixShrink(
+    activePath: [String],
+    newPath: [String],
+    guardValue: (sourcePath: [String], createdAt: Date)?,
+    maxInterval: TimeInterval = 0.5,
+    now: Date = Date()
+) -> Bool {
+    guard
+        isStrictPrefixPath(newPath, of: activePath),
+        let guardValue,
+        guardValue.sourcePath == activePath,
+        now.timeIntervalSince(guardValue.createdAt) <= maxInterval
+    else {
+        return false
     }
     
     return true
