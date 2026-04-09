@@ -123,4 +123,54 @@ final class SwiftfulRoutingTests: XCTestCase {
         XCTAssertEqual(firstViewModel.activeScreenStacks[1].screens.map(\.id), ["first_only_push"])
         XCTAssertTrue(secondViewModel.activeScreenStacks[1].screens.isEmpty)
     }
+    
+    @MainActor
+    func testInsertRootViewIsIdempotent() {
+        let viewModel = RouterViewModel()
+        
+        viewModel.insertRootView(
+            rootRouterId: "first_root_id",
+            view: makeDestination(id: RouterViewModel.rootId, segue: .fullScreenCover, animates: false)
+        )
+        
+        viewModel.insertRootView(
+            rootRouterId: "second_root_id",
+            view: makeDestination(id: RouterViewModel.rootId, segue: .fullScreenCover, animates: false)
+        )
+        
+        XCTAssertEqual(viewModel.activeScreenStacks.count, 2)
+        XCTAssertEqual(viewModel.activeScreenStacks[0].segue, .fullScreenCover)
+        XCTAssertEqual(viewModel.activeScreenStacks[1].segue, .push)
+        XCTAssertEqual(viewModel.activeScreenStacks[0].screens.count, 1)
+        XCTAssertEqual(viewModel.rootRouterIdFromDeveloper, "first_root_id")
+    }
+    
+    @MainActor
+    func testIsStrictPrefixPathAcceptsValidPop() {
+        let activePath = [
+            makeDestination(id: "screen_A"),
+            makeDestination(id: "screen_B"),
+            makeDestination(id: "screen_C")
+        ]
+        let poppedPath = [
+            makeDestination(id: "screen_A"),
+            makeDestination(id: "screen_B")
+        ]
+        
+        XCTAssertTrue(isStrictPrefixPath(poppedPath, of: activePath))
+    }
+    
+    @MainActor
+    func testIsStrictPrefixPathRejectsTransientNonPrefixUpdate() {
+        let activePath = [
+            makeDestination(id: "screen_A"),
+            makeDestination(id: "screen_B")
+        ]
+        let transientPath = [
+            makeDestination(id: "screen_X")
+        ]
+        
+        XCTAssertFalse(isStrictPrefixPath(transientPath, of: activePath))
+        XCTAssertFalse(isStrictPrefixPath(activePath, of: activePath))
+    }
 }

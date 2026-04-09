@@ -17,6 +17,9 @@ struct RouterViewInternal<Content: View>: View, Router {
     var rootRouterInfo: (id: String, transitionBehavior: TransitionMemoryBehavior)?
     var addNavigationStack: Bool = false
     var content: (AnyRouter) -> Content
+    
+    @State private var uiNavigationPath: [AnyDestination] = []
+    @State private var uiPathCallbacksToIgnore: Int = 0
 
     private var currentRouter: AnyRouter {
         AnyRouter(id: routerId, rootRouterId: rootRouterInfo?.id ?? "", object: self)
@@ -38,7 +41,7 @@ struct RouterViewInternal<Content: View>: View, Router {
         
         // Add NavigationStack if needed
         .ifSatisfiesCondition(addNavigationStack, transform: { content in
-            NavigationStack(path: navigationPathBinding) {
+            NavigationStack(path: $uiNavigationPath) {
                 content
                     .navigationDestination(for: AnyDestination.self) { value in
                         value.destination
@@ -51,6 +54,15 @@ struct RouterViewInternal<Content: View>: View, Router {
                     // This does not happen to the other sheet/fsc modifiers outside of NavigationStack
                     // It is currently a tradeoff/limitation of SwiftUI between (presentationDetent bug #95) and (background OS bug #101)
                     .resizeableSheetBackgroundModifier(viewModel: viewModel, routerId: routerId)
+            }
+            .onAppear {
+                syncUIPathWithModelIfNeeded(reason: "onAppear")
+            }
+            .onChange(of: viewModel.activeScreenStacks) { _ in
+                syncUIPathWithModelIfNeeded(reason: "model_changed")
+            }
+            .onChange(of: uiNavigationPath) { newPath in
+                handleUINavigationPathDidChange(newPath: newPath)
             }
         })
         .sheetBackgroundModifier(viewModel: viewModel, routerId: routerId)
@@ -119,38 +131,67 @@ struct RouterViewInternal<Content: View>: View, Router {
     }
     
     private var routerIdentityKey: String {
-        "\(routerId)-\(ObjectIdentifier(viewModel).hashValue)"
+        "\(routerId)-\(String(describing: ObjectIdentifier(viewModel)))"
     }
     
-    private var navigationPathBinding: Binding<[AnyDestination]> {
-        Binding(get: {
-            let stacks = viewModel.activeScreenStacks
-            guard
-                let index = stacks.lastIndexWhereChildStackContains(routerId: routerId),
-                stacks.indices.contains(index + 1)
-            else {
-                return []
-            }
-            
-            return stacks[index + 1].screens
-        }, set: { newPath in
-            let stacks = viewModel.activeScreenStacks
-            guard
-                let index = stacks.lastIndexWhereChildStackContains(routerId: routerId),
-                stacks.indices.contains(index + 1)
-            else {
-                return
-            }
-            
-            let activePath = stacks[index + 1].screens
-            guard newPath.count < activePath.count else { return }
+    private var activePushPathFromModel: [AnyDestination] {
+        let stacks = viewModel.activeScreenStacks
+        guard
+            let index = stacks.lastIndexWhereChildStackContains(routerId: routerId),
+            stacks.indices.contains(index + 1)
+        else {
+            return []
+        }
+        
+        return stacks[index + 1].screens
+    }
+    
+    private func syncUIPathWithModelIfNeeded(reason: String) {
+        let modelPath = activePushPathFromModel
+        guard uiNavigationPath != modelPath else { return }
+        
+        uiPathCallbacksToIgnore += 1
+        uiNavigationPath = modelPath
+        
+        #if DEBUG
+        print("SwiftfulRouting path sync (\(reason)): \(routerId) -> \(modelPath.map(\.id))")
+        #endif
+    }
+    
+    private func handleUINavigationPathDidChange(newPath: [AnyDestination]) {
+        // Ignore callbacks caused by model -> UI sync.
+        if uiPathCallbacksToIgnore > 0 {
+            uiPathCallbacksToIgnore -= 1
+            return
+        }
+        
+        let activePath = activePushPathFromModel
+        
+        // No-op update.
+        if newPath == activePath {
+            return
+        }
+        
+        // Accept only valid user pop gestures: strict-prefix shrink.
+        if isStrictPrefixPath(newPath, of: activePath) {
+            #if DEBUG
+            print("SwiftfulRouting path pop accepted: \(routerId) \(activePath.map(\.id)) -> \(newPath.map(\.id))")
+            #endif
             
             if let lastScreen = newPath.last {
                 viewModel.dismissScreens(to: lastScreen.id, animates: true)
             } else {
                 viewModel.dismissPushStack(routeId: routerId, animates: true)
             }
-        })
+            
+            return
+        }
+        
+        // Ignore transient/non-prefix callbacks (seen on macOS during push/layout) and restore model path.
+        #if DEBUG
+        print("SwiftfulRouting path transient ignored: \(routerId) \(activePath.map(\.id)) -> \(newPath.map(\.id))")
+        #endif
+        syncUIPathWithModelIfNeeded(reason: "transient_ui_callback")
     }
             
     var activeScreens: [AnyDestinationStack] {
@@ -361,6 +402,18 @@ struct RouterViewInternal<Content: View>: View, Router {
         openURL(url)
         logger.trackEvent(event: RouterViewModel.Event.showSafari(url: url))
     }
+}
+
+func isStrictPrefixPath(_ candidate: [AnyDestination], of activePath: [AnyDestination]) -> Bool {
+    guard candidate.count < activePath.count else { return false }
+    
+    for index in candidate.indices {
+        if candidate[index].id != activePath[index].id {
+            return false
+        }
+    }
+    
+    return true
 }
 
 extension View {

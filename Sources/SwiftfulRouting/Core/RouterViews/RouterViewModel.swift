@@ -11,6 +11,7 @@ final class RouterViewModel: ObservableObject {
     static let rootId = "root"
     
     @Published private(set) var rootRouterIdFromDeveloper: String? = nil
+    private var hasInsertedRootView: Bool = false
     
     // Active screen stack heirarchy. See AnyDestinationStack.swift for documentation.
     @Published private(set) var activeScreenStacks: [AnyDestinationStack] = [AnyDestinationStack(segue: .push, screens: [])]
@@ -43,7 +44,18 @@ final class RouterViewModel: ObservableObject {
     // This replaces starting activeScreenStacks value.
     // It MUST be called after the screen appears, since it is adding the View itself to the array.
     func insertRootView(rootRouterId: String?, view: AnyDestination) {
-        activeScreenStacks.insert(AnyDestinationStack(segue: .fullScreenCover, screens: [view]), at: 0)
+        guard !hasInsertedRootView else {
+            #if DEBUG
+            print("SwiftfulRouting root bootstrap ignored: root already inserted")
+            #endif
+            return
+        }
+        
+        hasInsertedRootView = true
+        activeScreenStacks = [
+            AnyDestinationStack(segue: .fullScreenCover, screens: [view]),
+            AnyDestinationStack(segue: .push, screens: [])
+        ]
         rootRouterIdFromDeveloper = rootRouterId
         logger.trackScreenView(event: Event.screenShow(screen: view, rootRouterId: rootRouterIdFromDeveloper))
     }
