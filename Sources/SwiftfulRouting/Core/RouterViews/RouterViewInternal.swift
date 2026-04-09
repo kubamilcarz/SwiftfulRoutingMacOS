@@ -18,8 +18,6 @@ struct RouterViewInternal<Content: View>: View, Router {
     var addNavigationStack: Bool = false
     var content: (AnyRouter) -> Content
 
-    @StateObject private var stableScreenStack = StableAnyDestinationArray(destinations: [])
-
     private var currentRouter: AnyRouter {
         AnyRouter(id: routerId, rootRouterId: rootRouterInfo?.id ?? "", object: self)
     }
@@ -36,21 +34,14 @@ struct RouterViewInternal<Content: View>: View, Router {
                 dismissTransition()
             }
         )
-        .id(routerId)
+        .id(routerIdentityKey)
         
         // Add NavigationStack if needed
         .ifSatisfiesCondition(addNavigationStack, transform: { content in
-            NavigationStack(path: $stableScreenStack.destinations) {
+            NavigationStack(path: navigationPathBinding) {
                 content
                     .navigationDestination(for: AnyDestination.self) { value in
                         value.destination
-                    }
-                    .onChange(of: stableScreenStack.destinations, perform: { screenStack in
-                        // User manually swiped back on screen
-                        handleStableScreenStackDidChange(screenStack: screenStack)
-                    })
-                    .onChange(of: viewModel.activeScreenStacks) { newStack in
-                        handleActiveScreenStackDidChange(newStack: newStack)
                     }
                 
                     // There's a weird behavior (bug?) where the presentationDetent is not calculated
@@ -127,35 +118,39 @@ struct RouterViewInternal<Content: View>: View, Router {
         return viewModel.activeScreenStacks[index].screens.first(where: { $0.id == routerId })
     }
     
-    private func handleStableScreenStackDidChange(screenStack: [AnyDestination]) {
-        let activeStack = viewModel.activeScreenStacks
-        let index = activeStack.firstIndex { subStack in
-            return subStack.screens.contains(where: { $0.id == routerId })
-        }
-        guard let index, activeStack.indices.contains(index + 1) else {
-            return
-        }
-
-        if screenStack.count < activeStack[index + 1].screens.count {
-            if let lastScreen = screenStack.last {
+    private var routerIdentityKey: String {
+        "\(routerId)-\(ObjectIdentifier(viewModel).hashValue)"
+    }
+    
+    private var navigationPathBinding: Binding<[AnyDestination]> {
+        Binding(get: {
+            let stacks = viewModel.activeScreenStacks
+            guard
+                let index = stacks.lastIndexWhereChildStackContains(routerId: routerId),
+                stacks.indices.contains(index + 1)
+            else {
+                return []
+            }
+            
+            return stacks[index + 1].screens
+        }, set: { newPath in
+            let stacks = viewModel.activeScreenStacks
+            guard
+                let index = stacks.lastIndexWhereChildStackContains(routerId: routerId),
+                stacks.indices.contains(index + 1)
+            else {
+                return
+            }
+            
+            let activePath = stacks[index + 1].screens
+            guard newPath.count < activePath.count else { return }
+            
+            if let lastScreen = newPath.last {
                 viewModel.dismissScreens(to: lastScreen.id, animates: true)
             } else {
                 viewModel.dismissPushStack(routeId: routerId, animates: true)
             }
-        }
-    }
-    
-    private func handleActiveScreenStackDidChange(newStack: [AnyDestinationStack]) {
-        let index = newStack.firstIndex { subStack in
-            return subStack.screens.contains(where: { $0.id == routerId })
-        }
-        guard let index, newStack.indices.contains(index + 1) else {
-            stableScreenStack.setNewValueIfNeeded(newValue: [])
-            return
-        }
-        
-        let activeStack = newStack[index + 1].screens
-        stableScreenStack.setNewValueIfNeeded(newValue: activeStack)
+        })
     }
             
     var activeScreens: [AnyDestinationStack] {

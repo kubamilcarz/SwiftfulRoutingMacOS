@@ -1058,6 +1058,8 @@ router.activeModules
 <summary> Details (Click to expand) </summary>
 <br>
 
+**macOS note:** Push navigation inside per-tab `RouterView` stacks is supported when each tab owns its own `RouterView` (`addNavigationStack: true`), with no extra flags required.
+
 Even without SwiftfulRouting, SwiftUI developers must decide between using 1 NavigationStack for the entire application or individual NavigationStacks for each tab. 
 
 If you use only 1 `NavigationStack`, it will be a parent to the `TabView` and therefore the tabbar will also push off screen after a segue.
