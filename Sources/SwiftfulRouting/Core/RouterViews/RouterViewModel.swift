@@ -39,6 +39,10 @@ final class RouterViewModel: ObservableObject {
     
     // Available transitions in queue, accessible via .showNextTransition()
     @Published private(set) var availableTransitionQueue: [String: [AnyTransitionDestination]] = [:]
+    
+    // Route registry for destination resolution by route id (used by NavigationStack path-based lookups).
+    // Routes remain cached after dismissal to avoid transient nil lookups during SwiftUI lifecycle updates.
+    @Published private(set) var allDestinationsById: [String: AnyDestination] = [:]
         
     // Only called once onFirstAppear in the root router.
     // This replaces starting activeScreenStacks value.
@@ -56,6 +60,7 @@ final class RouterViewModel: ObservableObject {
             AnyDestinationStack(segue: .fullScreenCover, screens: [view]),
             AnyDestinationStack(segue: .push, screens: [])
         ]
+        allDestinationsById[view.id] = view
         rootRouterIdFromDeveloper = rootRouterId
         logger.trackScreenView(event: Event.screenShow(screen: view, rootRouterId: rootRouterIdFromDeveloper))
     }
@@ -271,6 +276,7 @@ extension RouterViewModel {
     
     // Immediately show the destination screen
     private func showScreen(routerId: String, destination: AnyDestination) {
+        allDestinationsById[destination.id] = destination
         
         // 1. Get the index within the activeScreenStacks that we will edit
         let stackIndex: Int

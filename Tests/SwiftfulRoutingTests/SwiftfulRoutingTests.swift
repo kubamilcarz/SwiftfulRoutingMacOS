@@ -125,6 +125,20 @@ final class SwiftfulRoutingTests: XCTestCase {
     }
     
     @MainActor
+    func testDestinationRegistryCachesShownRoutes() async {
+        let viewModel = makeViewModel()
+        
+        viewModel.showScreens(
+            routerId: RouterViewModel.rootId,
+            destinations: [makeDestination(id: "screen_registry_test")]
+        )
+        await flushMainActor()
+        
+        XCTAssertNotNil(viewModel.allDestinationsById[RouterViewModel.rootId])
+        XCTAssertNotNil(viewModel.allDestinationsById["screen_registry_test"])
+    }
+    
+    @MainActor
     func testInsertRootViewIsIdempotent() {
         let viewModel = RouterViewModel()
         

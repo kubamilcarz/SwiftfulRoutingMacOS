@@ -20,7 +20,6 @@ struct RouterViewInternal<Content: View>: View, Router {
     
     @State private var uiNavigationPath: [String] = []
     @State private var uiPathCallbacksToIgnore: Int = 0
-    @State private var destinationCacheByRouteId: [String: AnyDestination] = [:]
     @State private var transientPrefixShrinkGuard: (sourcePath: [String], createdAt: Date)? = nil
 
     private var currentRouter: AnyRouter {
@@ -166,13 +165,18 @@ struct RouterViewInternal<Content: View>: View, Router {
             return destination
         }
         
-        return destinationCacheByRouteId[routeId]
+        if let destination = viewModel.allDestinationsById[routeId] {
+            return destination
+        }
+        
+        #if DEBUG
+        print("SwiftfulRouting destination lookup miss: \(routerId) route=\(routeId)")
+        #endif
+        return nil
     }
     
     private func syncUIPathWithModelIfNeeded(reason: String) {
         let modelDestinations = activePushPathFromModel
-        cacheDestinations(modelDestinations)
-        
         let modelPath = modelDestinations.map(\.id)
         
         if modelPath.count > uiNavigationPath.count {
@@ -241,12 +245,6 @@ struct RouterViewInternal<Content: View>: View, Router {
         print("SwiftfulRouting path transient ignored: \(routerId) \(activePath) -> \(newPath)")
         #endif
         syncUIPathWithModelIfNeeded(reason: "transient_ui_callback")
-    }
-    
-    private func cacheDestinations(_ destinations: [AnyDestination]) {
-        for destination in destinations {
-            destinationCacheByRouteId[destination.id] = destination
-        }
     }
             
     var activeScreens: [AnyDestinationStack] {
