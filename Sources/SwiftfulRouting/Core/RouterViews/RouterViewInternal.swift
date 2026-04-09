@@ -18,7 +18,7 @@ struct RouterViewInternal<Content: View>: View, Router {
     var addNavigationStack: Bool = false
     var content: (AnyRouter) -> Content
     
-    @State private var uiNavigationPath: [AnyDestination] = []
+    @State private var uiNavigationPath: [String] = []
     @State private var uiPathCallbacksToIgnore: Int = 0
 
     private var currentRouter: AnyRouter {
@@ -43,8 +43,12 @@ struct RouterViewInternal<Content: View>: View, Router {
         .ifSatisfiesCondition(addNavigationStack, transform: { content in
             NavigationStack(path: $uiNavigationPath) {
                 content
-                    .navigationDestination(for: AnyDestination.self) { value in
-                        value.destination
+                    .navigationDestination(for: String.self) { routeId in
+                        if let destination = destination(forRouteId: routeId) {
+                            destination.destination
+                        } else {
+                            EmptyView()
+                        }
                     }
                 
                     // There's a weird behavior (bug?) where the presentationDetent is not calculated
@@ -146,26 +150,39 @@ struct RouterViewInternal<Content: View>: View, Router {
         return stacks[index + 1].screens
     }
     
+    private var activePushPathRouteIdsFromModel: [String] {
+        activePushPathFromModel.map(\.id)
+    }
+    
+    private func destination(forRouteId routeId: String) -> AnyDestination? {
+        // Resolve against active push path first (normal flow), then all screens as a fallback for transition timing.
+        if let destination = activePushPathFromModel.last(where: { $0.id == routeId }) {
+            return destination
+        }
+        
+        return viewModel.activeScreenStacks.allScreens.last(where: { $0.id == routeId })
+    }
+    
     private func syncUIPathWithModelIfNeeded(reason: String) {
-        let modelPath = activePushPathFromModel
+        let modelPath = activePushPathRouteIdsFromModel
         guard uiNavigationPath != modelPath else { return }
         
         uiPathCallbacksToIgnore += 1
         uiNavigationPath = modelPath
         
         #if DEBUG
-        print("SwiftfulRouting path sync (\(reason)): \(routerId) -> \(modelPath.map(\.id))")
+        print("SwiftfulRouting path sync (\(reason)): \(routerId) -> \(modelPath)")
         #endif
     }
     
-    private func handleUINavigationPathDidChange(newPath: [AnyDestination]) {
+    private func handleUINavigationPathDidChange(newPath: [String]) {
         // Ignore callbacks caused by model -> UI sync.
         if uiPathCallbacksToIgnore > 0 {
             uiPathCallbacksToIgnore -= 1
             return
         }
         
-        let activePath = activePushPathFromModel
+        let activePath = activePushPathRouteIdsFromModel
         
         // No-op update.
         if newPath == activePath {
@@ -175,11 +192,11 @@ struct RouterViewInternal<Content: View>: View, Router {
         // Accept only valid user pop gestures: strict-prefix shrink.
         if isStrictPrefixPath(newPath, of: activePath) {
             #if DEBUG
-            print("SwiftfulRouting path pop accepted: \(routerId) \(activePath.map(\.id)) -> \(newPath.map(\.id))")
+            print("SwiftfulRouting path pop accepted: \(routerId) \(activePath) -> \(newPath)")
             #endif
             
-            if let lastScreen = newPath.last {
-                viewModel.dismissScreens(to: lastScreen.id, animates: true)
+            if let lastScreenId = newPath.last {
+                viewModel.dismissScreens(to: lastScreenId, animates: true)
             } else {
                 viewModel.dismissPushStack(routeId: routerId, animates: true)
             }
@@ -189,7 +206,7 @@ struct RouterViewInternal<Content: View>: View, Router {
         
         // Ignore transient/non-prefix callbacks (seen on macOS during push/layout) and restore model path.
         #if DEBUG
-        print("SwiftfulRouting path transient ignored: \(routerId) \(activePath.map(\.id)) -> \(newPath.map(\.id))")
+        print("SwiftfulRouting path transient ignored: \(routerId) \(activePath) -> \(newPath)")
         #endif
         syncUIPathWithModelIfNeeded(reason: "transient_ui_callback")
     }
@@ -404,11 +421,11 @@ struct RouterViewInternal<Content: View>: View, Router {
     }
 }
 
-func isStrictPrefixPath(_ candidate: [AnyDestination], of activePath: [AnyDestination]) -> Bool {
+func isStrictPrefixPath<T: Equatable>(_ candidate: [T], of activePath: [T]) -> Bool {
     guard candidate.count < activePath.count else { return false }
     
     for index in candidate.indices {
-        if candidate[index].id != activePath[index].id {
+        if candidate[index] != activePath[index] {
             return false
         }
     }

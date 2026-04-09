@@ -147,28 +147,16 @@ final class SwiftfulRoutingTests: XCTestCase {
     
     @MainActor
     func testIsStrictPrefixPathAcceptsValidPop() {
-        let activePath = [
-            makeDestination(id: "screen_A"),
-            makeDestination(id: "screen_B"),
-            makeDestination(id: "screen_C")
-        ]
-        let poppedPath = [
-            makeDestination(id: "screen_A"),
-            makeDestination(id: "screen_B")
-        ]
+        let activePath = ["screen_A", "screen_B", "screen_C"]
+        let poppedPath = ["screen_A", "screen_B"]
         
         XCTAssertTrue(isStrictPrefixPath(poppedPath, of: activePath))
     }
     
     @MainActor
     func testIsStrictPrefixPathRejectsTransientNonPrefixUpdate() {
-        let activePath = [
-            makeDestination(id: "screen_A"),
-            makeDestination(id: "screen_B")
-        ]
-        let transientPath = [
-            makeDestination(id: "screen_X")
-        ]
+        let activePath = ["screen_A", "screen_B"]
+        let transientPath = ["screen_X"]
         
         XCTAssertFalse(isStrictPrefixPath(transientPath, of: activePath))
         XCTAssertFalse(isStrictPrefixPath(activePath, of: activePath))
