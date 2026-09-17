@@ -8,7 +8,9 @@ import Foundation
 import SwiftUI
 import SwiftfulRecursiveUI
 
-#if canImport(UIKit)
+#if os(watchOS)
+import WatchKit
+#elseif canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
 import AppKit
@@ -24,7 +26,9 @@ struct ModuleSupportView<Content:View>: View {
     @ViewBuilder var content: (AnyRouter) -> Content
 
     @State private var viewFrame: CGRect = {
-        #if canImport(UIKit)
+        #if os(watchOS)
+        WKInterfaceDevice.current().screenBounds
+        #elseif canImport(UIKit)
         UIScreen.main.bounds
         #elseif canImport(AppKit)
         NSScreen.main?.frame ?? .zero

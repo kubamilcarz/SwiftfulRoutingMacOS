@@ -8,7 +8,9 @@ import Foundation
 import SwiftUI
 import SwiftfulRecursiveUI
 
-#if canImport(UIKit)
+#if os(watchOS)
+import WatchKit
+#elseif canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
 import AppKit
@@ -24,7 +26,9 @@ struct TransitionSupportView<Content:View>: View {
     let onDidSwipeBack: () -> Void
 
     @State private var viewFrame: CGRect = {
-        #if canImport(UIKit)
+        #if os(watchOS)
+        WKInterfaceDevice.current().screenBounds
+        #elseif canImport(UIKit)
         UIScreen.main.bounds
         #elseif canImport(AppKit)
         NSScreen.main?.frame ?? .zero
@@ -88,7 +92,7 @@ extension View {
     
     @ViewBuilder
     func transactionAnimationIfAvailable<T: Equatable>(value: T, transition: TransitionOption) -> some View {
-        if #available(iOS 17.0, macOS 14.0, tvOS 17.0, *) {
+        if #available(iOS 17.0, macOS 14.0, tvOS 17.0, watchOS 10.0, *) {
             self
                 .transaction(value: value) { transaction in
                     transaction.animation = transition.animation

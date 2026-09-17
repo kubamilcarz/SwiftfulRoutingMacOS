@@ -66,7 +66,7 @@ extension View {
     
     @ViewBuilder
     func presentationCornerRadiusIfAvailable(_ value: CGFloat) -> some View {
-        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, *) {
+        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, watchOS 9.4, *) {
             self.presentationCornerRadius(value)
         } else {
             self
@@ -75,7 +75,7 @@ extension View {
     
     @ViewBuilder
     func presentationBackgroundInteractionIfAvailable(_ interaction: PresentationBackgroundInteractionBackSupport) -> some View {
-        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, *) {
+        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, watchOS 9.4, *) {
             self.presentationBackgroundInteraction(interaction.backgroundInteraction)
         } else {
             self
@@ -84,7 +84,7 @@ extension View {
     
     @ViewBuilder
     func presentationContentInteractionIfAvailable(_ interaction: PresentationContentInteractionBackSupport) -> some View {
-        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, *) {
+        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, watchOS 9.4, *) {
             self.presentationContentInteraction(interaction.contentInteraction)
         } else {
             self

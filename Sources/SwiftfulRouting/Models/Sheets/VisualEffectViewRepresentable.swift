@@ -7,7 +7,7 @@
 import Foundation
 import SwiftUI
 
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
 import UIKit
 
 struct IntensityVisualEffectViewRepresentable: UIViewRepresentable {
@@ -117,6 +117,24 @@ public struct BackgroundEffect {
         self.material = material
         self.blendingMode = blendingMode
         self.state = state
+        self.intensity = intensity
+    }
+}
+#elseif os(watchOS)
+// watchOS has no visual-effect view bridge. Keep modal backgrounds in SwiftUI.
+struct IntensityVisualEffectViewRepresentable: View {
+    let backgroundEffect: BackgroundEffect
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.black.opacity(max(0, min(1, backgroundEffect.intensity)) * 0.5))
+    }
+}
+
+public struct BackgroundEffect {
+    let intensity: CGFloat
+
+    public init(intensity: CGFloat) {
         self.intensity = intensity
     }
 }

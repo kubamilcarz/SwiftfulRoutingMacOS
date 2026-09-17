@@ -7,7 +7,7 @@
 import Foundation
 import SwiftUI
 
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
 import UIKit
 #endif
 
@@ -21,7 +21,7 @@ extension View {
     
     @ViewBuilder
     func applyEnvironmentBackgroundIfAvailable(option: EnvironmentBackgroundOption) -> some View {
-        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, *) {
+        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, watchOS 9.4, *) {
             switch option {
             case .automatic:
                 self
@@ -47,7 +47,7 @@ extension View {
     }
 }
 
-#if canImport(UIKit)
+#if canImport(UIKit) && !os(watchOS)
 fileprivate struct RemoveSheetShadow: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let view = UIView(frame: .zero)

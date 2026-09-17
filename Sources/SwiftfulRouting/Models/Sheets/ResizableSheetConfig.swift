@@ -48,7 +48,7 @@ public enum PresentationBackgroundInteractionBackSupport {
     case automatic, disabled, enabled
     case enabledUpThrough(PresentationDetentTransformable)
     
-    @available(iOS 16.4, macOS 13.3, tvOS 16.4, *)
+    @available(iOS 16.4, macOS 13.3, tvOS 16.4, watchOS 9.4, *)
     var backgroundInteraction: PresentationBackgroundInteraction {
         switch self {
         case .automatic:
@@ -66,7 +66,7 @@ public enum PresentationBackgroundInteractionBackSupport {
 public enum PresentationContentInteractionBackSupport {
     case automatic, resizes, scrolls
     
-    @available(iOS 16.4, macOS 13.3, tvOS 16.4, *)
+    @available(iOS 16.4, macOS 13.3, tvOS 16.4, watchOS 9.4, *)
     var contentInteraction: PresentationContentInteraction {
         switch self {
         case .automatic:

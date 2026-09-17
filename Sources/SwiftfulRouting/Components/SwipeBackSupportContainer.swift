@@ -6,7 +6,9 @@
 //
 import SwiftUI
 
-#if canImport(UIKit)
+#if os(watchOS)
+import WatchKit
+#elseif canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
 import AppKit
@@ -242,7 +244,9 @@ private struct DragGestureViewModifier: ViewModifier {
     }
 
     private var referenceScreenWidth: CGFloat {
-        #if canImport(UIKit)
+        #if os(watchOS)
+        WKInterfaceDevice.current().screenBounds.width
+        #elseif canImport(UIKit)
         UIScreen.main.bounds.width
         #elseif canImport(AppKit)
         NSScreen.main?.frame.width ?? 1000
