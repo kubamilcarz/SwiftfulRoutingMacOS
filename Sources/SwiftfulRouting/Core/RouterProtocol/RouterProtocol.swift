@@ -9,6 +9,7 @@
 import SwiftUI
 
 protocol Router: Sendable {
+    @MainActor var selectedSplitViewDetailID: String? { get }
     @MainActor var activeScreens: [AnyDestinationStack] { get }
     @MainActor var activeScreenQueue: [AnyDestination] { get }
     @MainActor var activeAlert: AnyAlert? { get }

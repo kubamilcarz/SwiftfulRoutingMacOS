@@ -231,6 +231,49 @@ RouterView(addNavigationStack: false) { router in
 
 </details>
 
+## Native split navigation
+
+On iOS 17, macOS 14, tvOS 17, and watchOS 10 or later, use a two-column `NavigationSplitView`:
+
+```swift
+RouterView(navigationSplitView: true) { router in
+    List {
+        Button("Projects") {
+            router.showScreen(.push, id: "projects") { detailRouter in
+                ProjectsView(router: detailRouter)
+            }
+        }
+    }
+}
+```
+
+Root content stays in the sidebar. A default `.push` from the sidebar selects a detail and clears the previous detail history. Pushes from detail screens navigate deeper; pushing from an earlier detail replaces its descendants. Explicit `.append` and `.insertAfter(id:)` locations retain their existing insertion behavior.
+
+The first detail route is available as `router.selectedSplitViewDetailID` for sidebar highlighting. Pass stable destination IDs when using it. The property is `nil` with no selection, in ordinary routers, and in separate sheet/full-screen presentation environments.
+
+Customize the placeholder and optionally bind native column visibility:
+
+```swift
+@State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+
+var body: some View {
+    RouterView(
+        navigationSplitView: true,
+        columnVisibility: $columnVisibility
+    ) { router in
+        SidebarView(router: router)
+    } emptyDetail: { router in
+        Text("Choose a project")
+    }
+}
+```
+
+Without `emptyDetail`, the detail column displays “Select an item”. The placeholder receives the sidebar router. Native compact layouts start in the sidebar and show detail after selection. Back through detail history retains the selection; back from the first detail clears it and returns to the sidebar. Hiding the sidebar or changing layout preserves navigation state. The visibility binding controls expanded layouts; SwiftUI manages collapsed column visibility.
+
+Existing dismissal methods work across both columns. Dismissing the first detail or calling `dismissPushStack()` clears selection and restores the placeholder. Sheets and full-screen presentations keep independent navigation stacks. With module support, split configuration applies to the initial module only.
+
+Split mode takes precedence over `addNavigationStack`. `navigationSplitView: false` uses existing navigation behavior. Existing initializer availability and package deployment minimums are unchanged; only split-mode overloads require the newer OS versions above.
+
 ## Show Screens
 
 <details>

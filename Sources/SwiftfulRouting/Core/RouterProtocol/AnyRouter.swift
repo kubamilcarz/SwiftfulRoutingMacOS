@@ -12,11 +12,14 @@ public struct AnyRouter: Sendable, Router {
     public let id: String
     public let rootRouterId: String
     private let object: any Router
+    // Changes the environment value when selection changes, so sidebar consumers redraw.
+    private let selectionIdentity: String?
 
-    init(id: String, rootRouterId: String, object: any Router) {
+    init(id: String, rootRouterId: String, object: any Router, selectionIdentity: String? = nil) {
         self.id = id
         self.rootRouterId = rootRouterId
         self.object = object
+        self.selectionIdentity = selectionIdentity
     }
     
     /// Active screen stacks in this RouterView's heirarchy.
@@ -31,6 +34,12 @@ public struct AnyRouter: Sendable, Router {
     /// Use showNextScreen() to trigger the next screen.
     @MainActor public var activeScreenQueue: [AnyDestination] {
         object.activeScreenQueue
+    }
+
+    /// The first detail route in this split environment, suitable for sidebar highlighting.
+    /// Returns nil when selection is empty or this router belongs to a separate presentation environment.
+    @MainActor public var selectedSplitViewDetailID: String? {
+        object.selectedSplitViewDetailID
     }
     
     /// If there is at least 1 screen in activeScreenQueue.
@@ -617,7 +626,7 @@ public struct AnyRouter: Sendable, Router {
 extension AnyRouter: Identifiable, Hashable, Equatable {
 
     public static func == (lhs: AnyRouter, rhs: AnyRouter) -> Bool {
-        lhs.id == rhs.id && lhs.rootRouterId == rhs.rootRouterId
+        lhs.id == rhs.id && lhs.rootRouterId == rhs.rootRouterId && lhs.selectionIdentity == rhs.selectionIdentity
     }
 
     public func hash(into hasher: inout Hasher) {

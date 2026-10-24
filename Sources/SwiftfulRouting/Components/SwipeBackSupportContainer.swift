@@ -171,6 +171,7 @@ private struct DragGestureViewModifier: ViewModifier {
             .rotationEffect(Angle(degrees: rotation), anchor: .center)
             .offset(getOffset(offset: lastOffset))
             .offset(getOffset(offset: offset))
+            #if !os(tvOS)
             .simultaneousGesture(
                 DragGesture(minimumDistance: minimumDistance, coordinateSpace: .global)
                     .onChanged({ value in
@@ -204,6 +205,7 @@ private struct DragGestureViewModifier: ViewModifier {
                         }
                     })
             )
+            #endif
     }
     
     private func getOffset(offset: CGSize) -> CGSize {

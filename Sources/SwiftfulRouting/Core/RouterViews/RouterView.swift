@@ -34,6 +34,7 @@ public struct RouterView<Content: View>: View {
     let addNavigationStack: Bool
     let addModuleSupport: Bool
     let transitionBehavior: TransitionMemoryBehavior
+    var splitViewConfiguration: SplitViewConfiguration? = nil
     @ViewBuilder var content: (AnyRouter) -> Content
     
     public init(
@@ -61,20 +62,73 @@ public struct RouterView<Content: View>: View {
         self.content = content
     }
 
+    /// Uses root content as a sidebar and adapts pushes into detail selection and navigation.
+    /// Split mode takes precedence over `addNavigationStack`.
+    @available(iOS 17, macOS 14, tvOS 17, watchOS 10, *)
+    public init(
+        id: String? = nil,
+        navigationSplitView: Bool,
+        columnVisibility: Binding<NavigationSplitViewVisibility>? = nil,
+        addNavigationStack: Bool = true,
+        addModuleSupport: Bool = false,
+        transitionBehavior: TransitionMemoryBehavior = .keepPrevious,
+        @ViewBuilder content: @escaping (AnyRouter) -> Content
+    ) {
+        self.init(
+            id: id,
+            navigationSplitView: navigationSplitView,
+            columnVisibility: columnVisibility,
+            addNavigationStack: addNavigationStack,
+            addModuleSupport: addModuleSupport,
+            transitionBehavior: transitionBehavior,
+            content: content,
+            emptyDetail: { _ in Text("Select an item") }
+        )
+    }
+
+    /// Provides custom content for the detail column when no route is selected.
+    @available(iOS 17, macOS 14, tvOS 17, watchOS 10, *)
+    public init<Detail: View>(
+        id: String? = nil,
+        navigationSplitView: Bool,
+        columnVisibility: Binding<NavigationSplitViewVisibility>? = nil,
+        addNavigationStack: Bool = true,
+        addModuleSupport: Bool = false,
+        transitionBehavior: TransitionMemoryBehavior = .keepPrevious,
+        @ViewBuilder content: @escaping (AnyRouter) -> Content,
+        @ViewBuilder emptyDetail: @escaping (AnyRouter) -> Detail
+    ) {
+        self.init(
+            id: id,
+            addNavigationStack: addNavigationStack,
+            addModuleSupport: addModuleSupport,
+            transitionBehavior: transitionBehavior,
+            content: content
+        )
+        if navigationSplitView {
+            splitViewConfiguration = SplitViewConfiguration(
+                columnVisibility: columnVisibility,
+                emptyDetail: emptyDetail
+            )
+        }
+    }
+
     public var body: some View {
         Group {
             if addModuleSupport {
                 ModuleSupportView(
                     rootRouterInfo: (id, transitionBehavior),
                     addNavigationStack: addNavigationStack,
+                    splitViewConfiguration: splitViewConfiguration,
                     content: content
                 )
             } else {
-                RouterViewModelWrapper {
+                RouterViewModelWrapper(navigationSplitView: splitViewConfiguration != nil) {
                     RouterViewInternal(
                         routerId: RouterViewModel.rootId,
                         rootRouterInfo: (id, transitionBehavior),
                         addNavigationStack: addNavigationStack,
+                        splitViewConfiguration: splitViewConfiguration,
                         content: content
                     )
                 }
@@ -85,8 +139,13 @@ public struct RouterView<Content: View>: View {
 
 struct RouterViewModelWrapper<Content: View>: View {
     
-    @StateObject private var viewModel = RouterViewModel()
+    @StateObject private var viewModel: RouterViewModel
     @ViewBuilder var content: Content
+
+    init(navigationSplitView: Bool = false, @ViewBuilder content: () -> Content) {
+        _viewModel = StateObject(wrappedValue: RouterViewModel(navigationSplitView: navigationSplitView))
+        self.content = content()
+    }
 
     var body: some View {
         content

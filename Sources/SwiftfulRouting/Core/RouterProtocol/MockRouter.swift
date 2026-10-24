@@ -8,6 +8,7 @@ import Foundation
 import SwiftUI
 
 struct MockRouter: Router {
+    var selectedSplitViewDetailID: String? { nil }
     let printPrefix = "🕊️ SwiftfulRouting 🕊️ -> "
 
     private func printError() {

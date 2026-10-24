@@ -9,6 +9,23 @@ import SwiftUI
 @MainActor
 final class RouterViewModel: ObservableObject {
     static let rootId = "root"
+    let navigationSplitView: Bool
+
+    init(navigationSplitView: Bool = false) {
+        self.navigationSplitView = navigationSplitView
+    }
+
+    var splitViewDestinations: [AnyDestination] {
+        guard navigationSplitView, hasInsertedRootView, activeScreenStacks.indices.contains(1) else { return [] }
+        return activeScreenStacks[1].screens
+    }
+
+    func selectedSplitViewDetailID(routerId: String) -> String? {
+        guard navigationSplitView,
+              routerId == Self.rootId || splitViewDestinations.contains(where: { $0.id == routerId })
+        else { return nil }
+        return splitViewDestinations.first?.id
+    }
     
     @Published private(set) var rootRouterIdFromDeveloper: String? = nil
     private var hasInsertedRootView: Bool = false
@@ -247,7 +264,8 @@ extension RouterViewModel {
     // MARK: SEGUE - PUBLIC
         
     // Immediately show the destination screens in order
-    func showScreens(routerId: String, destinations: [AnyDestination]) {
+    @discardableResult
+    func showScreens(routerId: String, destinations: [AnyDestination]) -> Task<Void, Never> {
         Task {
             var lastRouterId = routerId
             var lastSegue: SegueOption? = nil
@@ -258,7 +276,7 @@ extension RouterViewModel {
                     // Also needs a delay if 2 new environments back to back
                     // However, it works without delay if there is no animation
                     if (destination.segue == .push || destination.segue.presentsNewEnvironment) && destination.animates  {
-                        try? await Task.sleep(for: .seconds(0.55))
+                        try? await Task.sleep(nanoseconds: 550_000_000)
                     }
                 }
                 
@@ -276,6 +294,13 @@ extension RouterViewModel {
     
     // Immediately show the destination screen
     private func showScreen(routerId: String, destination: AnyDestination) {
+        if navigationSplitView, destination.segue == .push,
+           case .insert = destination.location,
+           let stackIndex = activeScreenStacks.lastIndexWhereChildStackContains(routerId: routerId),
+           stackIndex <= 1 {
+            replaceSplitViewBranch(routerId: routerId, destination: destination)
+            return
+        }
         allDestinationsById[destination.id] = destination
         
         // 1. Get the index within the activeScreenStacks that we will edit
@@ -407,6 +432,39 @@ extension RouterViewModel {
         }
         
         logger.trackScreenView(event: Event.screenShow(screen: destination, rootRouterId: rootRouterIdFromDeveloper))
+    }
+
+    private func replaceSplitViewBranch(routerId: String, destination: AnyDestination) {
+        let screens = splitViewDestinations
+        let keepCount = screens.firstIndex(where: { $0.id == routerId }).map { $0 + 1 } ?? 0
+        let removedScreens = Array(screens.dropFirst(keepCount))
+            + activeScreenStacks.dropFirst(2).flatMap(\.screens)
+        var stacks = Array(activeScreenStacks.prefix(2))
+        stacks[1].screens = Array(screens.prefix(keepCount)) + [destination]
+
+        allDestinationsById[destination.id] = destination
+        triggerAction(withAnimation: destination.animates) {
+            self.activeScreenStacks = stacks
+        }
+        didDismissScreens(removedScreens)
+        // Initialize after cleanup so reselecting the same route ID starts with fresh state.
+        allTransitions[destination.id] = [.root]
+        logger.trackScreenView(event: Event.screenShow(screen: destination, rootRouterId: rootRouterIdFromDeveloper))
+    }
+
+    private func didDismissScreens(_ screens: [AnyDestination]) {
+        for screen in screens.reversed() {
+            if navigationSplitView {
+                dismissAllModals(routerId: screen.id)
+                activeAlert[screen.id] = nil
+                allModals[screen.id] = nil
+                allTransitions[screen.id] = nil
+                currentTransitions[screen.id] = nil
+                availableTransitionQueue[screen.id] = nil
+            }
+            screen.onDismiss?()
+            logger.trackEvent(event: Event.screenDismiss(screen: screen, rootRouterId: rootRouterIdFromDeveloper))
+        }
     }
     
     // Utility functino to trigger action with or without SwiftUI animation
@@ -597,10 +655,7 @@ extension RouterViewModel {
                 }
                 
                 // Trigger screen onDismiss closures, if available
-                for screen in screensToDismiss.reversed() {
-                    screen.onDismiss?()
-                    logger.trackEvent(event: Event.screenDismiss(screen: screen, rootRouterId: rootRouterIdFromDeveloper))
-                }
+                didDismissScreens(screensToDismiss)
                 
                 if let newScreenShowing = activeScreenStacks.allScreens.last {
                     logger.trackScreenView(event: Event.screenShow(screen: newScreenShowing, rootRouterId: rootRouterIdFromDeveloper))
@@ -788,7 +843,7 @@ extension RouterViewModel {
             logger.trackEvent(event: Event.alertDismiss(alert: existingAlert))
             
             Task {
-                try? await Task.sleep(for: .seconds(0.1))
+                try? await Task.sleep(nanoseconds: 100_000_000)
                 self.activeAlert[routerId] = alert
             }
         } else {

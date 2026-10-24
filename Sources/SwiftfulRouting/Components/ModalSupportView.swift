@@ -44,10 +44,15 @@ struct ModalSupportView: View {
                             
                             // Only add backgound tap gesture if needed
                             .ifSatisfiesCondition(modal.dismissOnBackgroundTap, transform: { content in
-                                content
-                                    .onTapGesture {
-                                        onDismissModal(modal)
+                                Group {
+                                    if #available(tvOS 16, *) {
+                                        content.onTapGesture {
+                                            onDismissModal(modal)
+                                        }
+                                    } else {
+                                        content
                                     }
+                                }
                             })
                             .zIndex(dataIndex + 1)
                         } else {

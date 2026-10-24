@@ -22,6 +22,7 @@ struct ModuleSupportView<Content:View>: View {
 
     var rootRouterInfo: (id: String, transitionBehavior: TransitionMemoryBehavior)?
     let addNavigationStack: Bool
+    var splitViewConfiguration: SplitViewConfiguration? = nil
     
     @ViewBuilder var content: (AnyRouter) -> Content
 
@@ -44,11 +45,12 @@ struct ModuleSupportView<Content:View>: View {
 
                 return Group {
                     if data == viewModel.modules.first {
-                        RouterViewModelWrapper {
+                        RouterViewModelWrapper(navigationSplitView: splitViewConfiguration != nil) {
                             RouterViewInternal(
                                 routerId: RouterViewModel.rootId,
                                 rootRouterInfo: rootRouterInfo,
                                 addNavigationStack: addNavigationStack,
+                                splitViewConfiguration: splitViewConfiguration,
                                 content: content
                             )
                         }

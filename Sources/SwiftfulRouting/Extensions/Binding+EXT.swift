@@ -100,6 +100,7 @@ extension Binding where Value == Bool {
 }
 
 @MainActor
+@available(tvOS 16, *)
 extension Binding where Value == PresentationDetent {
     
     init(selection: Binding<PresentationDetentTransformable>) {
