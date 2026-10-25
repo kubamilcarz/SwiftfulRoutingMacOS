@@ -9,10 +9,12 @@
 import SwiftUI
 
 protocol Router: Sendable {
+    @MainActor var selectedSplitViewDetailID: String? { get }
     @MainActor var activeScreens: [AnyDestinationStack] { get }
     @MainActor var activeScreenQueue: [AnyDestination] { get }
     @MainActor var activeAlert: AnyAlert? { get }
     @MainActor var activeModals: [AnyModal] { get }
+    @MainActor var activeToasts: [AnyToast] { get }
     @MainActor var activeTransitions: [AnyTransitionDestination] { get }
     @MainActor var activeTransitionQueue: [AnyTransitionDestination] { get }
     @MainActor var activeModules: [AnyTransitionDestination] { get }
@@ -44,6 +46,11 @@ protocol Router: Sendable {
     @MainActor func dismissModals(upToId: String)
     @MainActor func dismissModals(count: Int)
     @MainActor func dismissAllModals()
+
+    @MainActor func showToast(toast: AnyToast)
+    @MainActor func dismissToast()
+    @MainActor func dismissToast(id: String)
+    @MainActor func dismissAllToasts()
     
     @MainActor func showTransition(transition: AnyTransitionDestination)
     @MainActor func showTransitions(transitions: [AnyTransitionDestination])

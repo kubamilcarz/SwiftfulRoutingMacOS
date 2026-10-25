@@ -10,6 +10,8 @@ import SwiftUI
 @MainActor
 public struct AnyDestination: Identifiable, Hashable {
     public private(set) var id: String
+    // Refreshed when shown, so reusable destinations receive fresh view-owned state.
+    private(set) var presentationID = UUID()
     public let segue: SegueOption
     public let location: SegueLocation
     public let animates: Bool
@@ -60,6 +62,12 @@ public struct AnyDestination: Identifiable, Hashable {
     
     mutating func updateScreenId(newValue: String) {
         id = newValue
+    }
+
+    func newPresentation() -> Self {
+        var presentation = self
+        presentation.presentationID = UUID()
+        return presentation
     }
     
     public var eventParameters: [String: Any] {

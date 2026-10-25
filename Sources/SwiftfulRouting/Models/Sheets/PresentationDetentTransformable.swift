@@ -14,6 +14,7 @@ public enum PresentationDetentTransformable: Hashable {
     case fraction(CGFloat)
     case unknown
     
+    @available(tvOS 16, *)
     init(detent: PresentationDetent) {
         // FIXME: Unable to convert .height(CGFloat) and .fraction(CGFloat) back from PresentationDetent to PresentationDetentTransformable
         switch detent {
@@ -26,6 +27,7 @@ public enum PresentationDetentTransformable: Hashable {
         }
     }
     
+    @available(tvOS 16, *)
     var asPresentationDetent: PresentationDetent {
         switch self {
         case .medium:

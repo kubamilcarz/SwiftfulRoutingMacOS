@@ -4,11 +4,42 @@
 //
 //  Created by Nick Sarno on 4/19/25.
 //
+
 import SwiftUI
 
 @MainActor
 final class RouterViewModel: ObservableObject {
     static let rootId = "root"
+    @Published var navigationSplitView: Bool
+
+    init(
+        navigationSplitView: Bool = false,
+        toastSleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
+        self.navigationSplitView = navigationSplitView
+        self.toastSleep = toastSleep
+    }
+
+    private let toastSleep: @MainActor (Duration) async throws -> Void
+    private var toastTimers: [UUID: Task<Void, Never>] = [:]
+    private var toastRoutersBeingDismissed: Set<String> = []
+    @Published private(set) var allToasts: [String: [ToastPresentation]] = [:]
+
+    deinit {
+        for timer in toastTimers.values { timer.cancel() }
+    }
+
+    var splitViewDestinations: [AnyDestination] {
+        guard navigationSplitView, hasInsertedRootView, activeScreenStacks.indices.contains(1) else { return [] }
+        return activeScreenStacks[1].screens
+    }
+
+    func selectedSplitViewDetailID(routerId: String) -> String? {
+        guard navigationSplitView,
+              routerId == Self.rootId || splitViewDestinations.contains(where: { $0.id == routerId })
+        else { return nil }
+        return splitViewDestinations.first?.id
+    }
     
     @Published private(set) var rootRouterIdFromDeveloper: String? = nil
     private var hasInsertedRootView: Bool = false
@@ -110,6 +141,8 @@ extension RouterViewModel {
         case alertDismiss(alert: AnyAlert)
         case modalShow(modal: AnyModal)
         case modalDismiss(modal: AnyModal)
+        case toastShow(toast: AnyToast)
+        case toastDismiss(toast: AnyToast)
         case transitionShow(transition: AnyTransitionDestination)
         case transitionDismiss(transition: AnyTransitionDestination)
         case showSafari(url: URL)
@@ -150,6 +183,8 @@ extension RouterViewModel {
             case .alertDismiss:                                         return "Routing_Alert_Dismiss"
             case .modalShow:                                            return "Routing_Modal_Appear"
             case .modalDismiss:                                         return "Routing_Modal_Dismiss"
+            case .toastShow:                                            return "Routing_Toast_Appear"
+            case .toastDismiss:                                         return "Routing_Toast_Dismiss"
             case .transitionShow:                                       return "Routing_Transition_Appear"
             case .transitionDismiss:                                    return "Routing_Transition_Dismiss"
             case .showSafari:                                           return "Routing_Safari_Show"
@@ -215,6 +250,8 @@ extension RouterViewModel {
                 return alert.eventParameters
             case .modalShow(modal: let modal), .modalDismiss(modal: let modal):
                 return modal.eventParameters
+            case .toastShow(toast: let toast), .toastDismiss(toast: let toast):
+                return toast.eventParameters
             case .transitionShow(transition: let transition), .transitionDismiss(transition: let transition):
                 return transition.eventParameters
             case .showSafari(url: let url):
@@ -230,7 +267,7 @@ extension RouterViewModel {
             switch self {
             case .screenStackUpdated, .screenQueueUpdated, .modalStackUpdated, .transitionStackUpdated, .transitionQueueUpdated:
                 return .info
-            case .screenShow, .screenDismiss, .alertShow, .alertDismiss, .modalShow, .modalDismiss, .transitionShow, .transitionDismiss:
+            case .screenShow, .screenDismiss, .alertShow, .alertDismiss, .modalShow, .modalDismiss, .toastShow, .toastDismiss, .transitionShow, .transitionDismiss:
                 return .analytic
             default:
                 return .warning
@@ -247,7 +284,8 @@ extension RouterViewModel {
     // MARK: SEGUE - PUBLIC
         
     // Immediately show the destination screens in order
-    func showScreens(routerId: String, destinations: [AnyDestination]) {
+    @discardableResult
+    func showScreens(routerId: String, destinations: [AnyDestination]) -> Task<Void, Never> {
         Task {
             var lastRouterId = routerId
             var lastSegue: SegueOption? = nil
@@ -258,7 +296,7 @@ extension RouterViewModel {
                     // Also needs a delay if 2 new environments back to back
                     // However, it works without delay if there is no animation
                     if (destination.segue == .push || destination.segue.presentsNewEnvironment) && destination.animates  {
-                        try? await Task.sleep(for: .seconds(0.55))
+                        try? await Task.sleep(nanoseconds: 550_000_000)
                     }
                 }
                 
@@ -276,6 +314,14 @@ extension RouterViewModel {
     
     // Immediately show the destination screen
     private func showScreen(routerId: String, destination: AnyDestination) {
+        let destination = destination.newPresentation()
+        if navigationSplitView, destination.segue == .push,
+           case .insert = destination.location,
+           let stackIndex = activeScreenStacks.lastIndexWhereChildStackContains(routerId: routerId),
+           stackIndex <= 1 {
+            replaceSplitViewBranch(routerId: routerId, destination: destination)
+            return
+        }
         allDestinationsById[destination.id] = destination
         
         // 1. Get the index within the activeScreenStacks that we will edit
@@ -407,6 +453,42 @@ extension RouterViewModel {
         }
         
         logger.trackScreenView(event: Event.screenShow(screen: destination, rootRouterId: rootRouterIdFromDeveloper))
+    }
+
+    private func replaceSplitViewBranch(routerId: String, destination: AnyDestination) {
+        let screens = splitViewDestinations
+        let keepCount = screens.firstIndex(where: { $0.id == routerId }).map { $0 + 1 } ?? 0
+        let removedScreens = Array(screens.dropFirst(keepCount))
+            + activeScreenStacks.dropFirst(2).flatMap(\.screens)
+        var stacks = Array(activeScreenStacks.prefix(2))
+        stacks[1].screens = Array(screens.prefix(keepCount)) + [destination]
+
+        allDestinationsById[destination.id] = destination
+        triggerAction(withAnimation: destination.animates) {
+            self.activeScreenStacks = stacks
+        }
+        didDismissScreens(removedScreens)
+        // Initialize after cleanup so reselecting the same route ID starts with fresh state.
+        allTransitions[destination.id] = [.root]
+        logger.trackScreenView(event: Event.screenShow(screen: destination, rootRouterId: rootRouterIdFromDeveloper))
+    }
+
+    private func didDismissScreens(_ screens: [AnyDestination]) {
+        for screen in screens.reversed() {
+            toastRoutersBeingDismissed.insert(screen.id)
+            defer { toastRoutersBeingDismissed.remove(screen.id) }
+            dismissAllToasts(routerId: screen.id)
+            if navigationSplitView {
+                dismissAllModals(routerId: screen.id)
+                activeAlert[screen.id] = nil
+                allModals[screen.id] = nil
+                allTransitions[screen.id] = nil
+                currentTransitions[screen.id] = nil
+                availableTransitionQueue[screen.id] = nil
+            }
+            screen.onDismiss?()
+            logger.trackEvent(event: Event.screenDismiss(screen: screen, rootRouterId: rootRouterIdFromDeveloper))
+        }
     }
     
     // Utility functino to trigger action with or without SwiftUI animation
@@ -597,10 +679,7 @@ extension RouterViewModel {
                 }
                 
                 // Trigger screen onDismiss closures, if available
-                for screen in screensToDismiss.reversed() {
-                    screen.onDismiss?()
-                    logger.trackEvent(event: Event.screenDismiss(screen: screen, rootRouterId: rootRouterIdFromDeveloper))
-                }
+                didDismissScreens(screensToDismiss)
                 
                 if let newScreenShowing = activeScreenStacks.allScreens.last {
                     logger.trackScreenView(event: Event.screenShow(screen: newScreenShowing, rootRouterId: rootRouterIdFromDeveloper))
@@ -788,7 +867,7 @@ extension RouterViewModel {
             logger.trackEvent(event: Event.alertDismiss(alert: existingAlert))
             
             Task {
-                try? await Task.sleep(for: .seconds(0.1))
+                try? await Task.sleep(nanoseconds: 100_000_000)
                 self.activeAlert[routerId] = alert
             }
         } else {
@@ -816,6 +895,86 @@ extension RouterViewModel {
         }
     }
     
+}
+
+// MARK: TOAST METHODS
+
+extension RouterViewModel {
+    func showToast(routerId: String, toast: AnyToast) {
+        // Ignore a stale router after its screen was removed, including dismissal callbacks.
+        guard !toastRoutersBeingDismissed.contains(routerId),
+              routerId == Self.rootId || activeScreenStacks.allScreens.contains(where: { $0.id == routerId }) else { return }
+
+        let replaced = removeToasts(routerId: routerId) { $0.toast.id == toast.id }
+        let presentation = ToastPresentation(toast: toast)
+        withAnimation(toast.animation) {
+            allToasts[routerId, default: []].append(presentation)
+        }
+        logger.trackEvent(event: Event.toastShow(toast: toast))
+
+        if let duration = toast.duration {
+            if duration > .zero {
+                let sleep = toastSleep
+                let presentationId = presentation.id
+                toastTimers[presentationId] = Task { [weak self] in
+                    do {
+                        try await sleep(duration)
+                        try Task.checkCancellation()
+                    } catch {
+                        return
+                    }
+                    self?.dismissToast(routerId: routerId, presentationId: presentationId)
+                }
+            } else {
+                dismissToast(routerId: routerId, presentationId: presentation.id)
+            }
+        }
+        // Install the new presentation first so reentrant callbacks cannot create duplicate IDs
+        // or have their new presentation overwritten when this method resumes.
+        notifyToastDismissals(replaced)
+    }
+
+    func dismissLastToast(routerId: String) {
+        guard let last = allToasts[routerId]?.last else { return }
+        dismissToast(routerId: routerId, presentationId: last.id)
+    }
+
+    func dismissToast(routerId: String, toastId: String) {
+        notifyToastDismissals(removeToasts(routerId: routerId) { $0.toast.id == toastId })
+    }
+
+    func dismissToast(routerId: String, presentationId: UUID) {
+        notifyToastDismissals(removeToasts(routerId: routerId) { $0.id == presentationId })
+    }
+
+    func dismissAllToasts(routerId: String) {
+        notifyToastDismissals(removeToasts(routerId: routerId) { _ in true }.reversed())
+    }
+
+    private func removeToasts(
+        routerId: String,
+        matching predicate: (ToastPresentation) -> Bool
+    ) -> [ToastPresentation] {
+        let items = allToasts[routerId] ?? []
+        let removed = items.filter(predicate)
+        guard let last = removed.last else { return [] }
+        for item in removed {
+            toastTimers.removeValue(forKey: item.id)?.cancel()
+        }
+        let removedIds = Set(removed.map(\.id))
+        let remaining = items.filter { !removedIds.contains($0.id) }
+        withAnimation(last.toast.animation) {
+            allToasts[routerId] = remaining.isEmpty ? nil : remaining
+        }
+        return removed
+    }
+
+    private func notifyToastDismissals<S: Sequence>(_ presentations: S) where S.Element == ToastPresentation {
+        for presentation in presentations {
+            logger.trackEvent(event: Event.toastDismiss(toast: presentation.toast))
+            presentation.toast.onDismiss?()
+        }
+    }
 }
 
 // MARK: MODAL METHODS

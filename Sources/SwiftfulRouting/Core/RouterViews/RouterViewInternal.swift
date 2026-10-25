@@ -16,6 +16,7 @@ struct RouterViewInternal<Content: View>: View, Router {
     var routerId: String
     var rootRouterInfo: (id: String, transitionBehavior: TransitionMemoryBehavior)?
     var addNavigationStack: Bool = false
+    var splitViewConfiguration: SplitViewConfiguration? = nil
     var content: (AnyRouter) -> Content
     
     @State private var uiNavigationPath: [String] = []
@@ -23,7 +24,13 @@ struct RouterViewInternal<Content: View>: View, Router {
     @State private var transientPrefixShrinkGuard: (sourcePath: [String], createdAt: Date)? = nil
 
     private var currentRouter: AnyRouter {
-        AnyRouter(id: routerId, rootRouterId: rootRouterInfo?.id ?? "", object: self)
+        AnyRouter(
+            id: routerId,
+            rootRouterId: rootRouterInfo?.id ?? "",
+            object: self,
+            selectionIdentity: selectedSplitViewDetailID,
+            toastIdentity: (viewModel.allToasts[routerId] ?? []).map(\.id)
+        )
     }
         
     var body: some View {
@@ -41,33 +48,42 @@ struct RouterViewInternal<Content: View>: View, Router {
         .id(routerIdentityKey)
         
         // Add NavigationStack if needed
-        .ifSatisfiesCondition(addNavigationStack, transform: { content in
-            NavigationStack(path: $uiNavigationPath) {
-                content
-                    .navigationDestination(for: String.self) { routeId in
-                        if let destination = destination(forRouteId: routeId) {
-                            destination.destination
-                        } else {
-                            EmptyView()
-                        }
-                    }
+        .ifLetCondition(splitViewConfiguration, transform: { content, configuration in
+            configuration.makeContainer(AnyView(content), currentRouter)
+        })
+        .ifSatisfiesCondition(addNavigationStack && splitViewConfiguration == nil, transform: { content in
+            Group {
+                if #available(tvOS 16, *) {
+                    NavigationStack(path: $uiNavigationPath) {
+                        content
+                            .navigationDestination(for: String.self) { routeId in
+                                if let destination = destination(forRouteId: routeId) {
+                                    destination.destination
+                                } else {
+                                    EmptyView()
+                                }
+                            }
                 
-                    // There's a weird behavior (bug?) where the presentationDetent is not calculated
-                    // If the .sheet modifier is outside of the NavigationStack
-                    // Therefore, this modifier only handles resizeableSheets
-                    // Note: when backgrounded, the OS will recreate this sheet (and children of this sheet)
-                    // This does not happen to the other sheet/fsc modifiers outside of NavigationStack
-                    // It is currently a tradeoff/limitation of SwiftUI between (presentationDetent bug #95) and (background OS bug #101)
-                    .resizeableSheetBackgroundModifier(viewModel: viewModel, routerId: routerId)
-            }
-            .onAppear {
-                syncUIPathWithModelIfNeeded(reason: "onAppear")
-            }
-            .onChange(of: viewModel.activeScreenStacks) { _ in
-                syncUIPathWithModelIfNeeded(reason: "model_changed")
-            }
-            .onChange(of: uiNavigationPath) { newPath in
-                handleUINavigationPathDidChange(newPath: newPath)
+                            // There's a weird behavior (bug?) where the presentationDetent is not calculated
+                            // If the .sheet modifier is outside of the NavigationStack
+                            // Therefore, this modifier only handles resizeableSheets
+                            // Note: when backgrounded, the OS will recreate this sheet (and children of this sheet)
+                            // This does not happen to the other sheet/fsc modifiers outside of NavigationStack
+                            // It is currently a tradeoff/limitation of SwiftUI between (presentationDetent bug #95) and (background OS bug #101)
+                            .resizeableSheetBackgroundModifier(viewModel: viewModel, routerId: routerId)
+                    }
+                    .onAppear {
+                        syncUIPathWithModelIfNeeded(reason: "onAppear")
+                    }
+                    .onChange(of: viewModel.activeScreenStacks) { _ in
+                        syncUIPathWithModelIfNeeded(reason: "model_changed")
+                    }
+                    .onChange(of: uiNavigationPath) { newPath in
+                        handleUINavigationPathDidChange(newPath: newPath)
+                    }
+                } else {
+                    content
+                }
             }
         })
         .sheetBackgroundModifier(viewModel: viewModel, routerId: routerId)
@@ -107,7 +123,10 @@ struct RouterViewInternal<Content: View>: View, Router {
                 }
             )
         )
-        
+
+        // Toasts sit above this router's custom modal content and background gestures.
+        .overlay(ToastSupportView(presentations: viewModel.allToasts[routerId] ?? []))
+
         #if DEBUG
         // logging on every router
         .onChange(of: viewModel.allModals[routerId] ?? []) { newValue in
@@ -250,6 +269,10 @@ struct RouterViewInternal<Content: View>: View, Router {
     var activeScreens: [AnyDestinationStack] {
         viewModel.activeScreenStacks
     }
+
+    var selectedSplitViewDetailID: String? {
+        viewModel.selectedSplitViewDetailID(routerId: routerId)
+    }
     
     var activeScreenQueue: [AnyDestination] {
         viewModel.availableScreenQueue
@@ -261,6 +284,26 @@ struct RouterViewInternal<Content: View>: View, Router {
     
     var activeModals: [AnyModal] {
         viewModel.allModals[routerId]?.active ?? []
+    }
+
+    var activeToasts: [AnyToast] {
+        (viewModel.allToasts[routerId] ?? []).map(\.toast)
+    }
+
+    func showToast(toast: AnyToast) {
+        viewModel.showToast(routerId: routerId, toast: toast)
+    }
+
+    func dismissToast() {
+        viewModel.dismissLastToast(routerId: routerId)
+    }
+
+    func dismissToast(id: String) {
+        viewModel.dismissToast(routerId: routerId, toastId: id)
+    }
+
+    func dismissAllToasts() {
+        viewModel.dismissAllToasts(routerId: routerId)
     }
     
     var activeTransitions: [AnyTransitionDestination] {

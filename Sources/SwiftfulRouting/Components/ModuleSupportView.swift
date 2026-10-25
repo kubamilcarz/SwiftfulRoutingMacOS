@@ -8,34 +8,17 @@ import Foundation
 import SwiftUI
 import SwiftfulRecursiveUI
 
-#if os(watchOS)
-import WatchKit
-#elseif canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
 struct ModuleSupportView<Content:View>: View {
     
     @StateObject private var viewModel = ModuleViewModel()
 
     var rootRouterInfo: (id: String, transitionBehavior: TransitionMemoryBehavior)?
     let addNavigationStack: Bool
+    var splitViewConfiguration: SplitViewConfiguration? = nil
     
     @ViewBuilder var content: (AnyRouter) -> Content
 
-    @State private var viewFrame: CGRect = {
-        #if os(watchOS)
-        WKInterfaceDevice.current().screenBounds
-        #elseif canImport(UIKit)
-        UIScreen.main.bounds
-        #elseif canImport(AppKit)
-        NSScreen.main?.frame ?? .zero
-        #else
-        .zero
-        #endif
-    }()
+    @State private var viewFrame: CGRect = .zero
 
     var body: some View {
         ZStack {
@@ -44,11 +27,12 @@ struct ModuleSupportView<Content:View>: View {
 
                 return Group {
                     if data == viewModel.modules.first {
-                        RouterViewModelWrapper {
+                        RouterViewModelWrapper(navigationSplitView: splitViewConfiguration != nil) {
                             RouterViewInternal(
                                 routerId: RouterViewModel.rootId,
                                 rootRouterInfo: rootRouterInfo,
                                 addNavigationStack: addNavigationStack,
+                                splitViewConfiguration: splitViewConfiguration,
                                 content: content
                             )
                         }
@@ -79,6 +63,7 @@ struct ModuleSupportView<Content:View>: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .modifier(ContainerFrameViewModifier(frame: $viewFrame))
         .transactionAnimationIfAvailable(
             value: (viewModel.modules.last?.id ?? "") + viewModel.currentTransition.id,
             transition: viewModel.currentTransition

@@ -8,6 +8,7 @@ import Foundation
 import SwiftUI
 
 struct MockRouter: Router {
+    var selectedSplitViewDetailID: String? { nil }
     let printPrefix = "🕊️ SwiftfulRouting 🕊️ -> "
 
     private func printError() {
@@ -35,6 +36,13 @@ struct MockRouter: Router {
     var activeModals: [AnyModal] {
         []
     }
+
+    var activeToasts: [AnyToast] { [] }
+
+    func showToast(toast: AnyToast) { printError() }
+    func dismissToast() { printError() }
+    func dismissToast(id: String) { printError() }
+    func dismissAllToasts() { printError() }
     
     var activeTransitions: [AnyTransitionDestination] {
         []

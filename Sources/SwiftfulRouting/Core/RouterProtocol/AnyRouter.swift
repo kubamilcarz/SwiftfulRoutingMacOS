@@ -12,11 +12,16 @@ public struct AnyRouter: Sendable, Router {
     public let id: String
     public let rootRouterId: String
     private let object: any Router
+    // Changes the environment value when selection or toast presentations change.
+    private let selectionIdentity: String?
+    private let toastIdentity: [UUID]
 
-    init(id: String, rootRouterId: String, object: any Router) {
+    init(id: String, rootRouterId: String, object: any Router, selectionIdentity: String? = nil, toastIdentity: [UUID] = []) {
         self.id = id
         self.rootRouterId = rootRouterId
         self.object = object
+        self.selectionIdentity = selectionIdentity
+        self.toastIdentity = toastIdentity
     }
     
     /// Active screen stacks in this RouterView's heirarchy.
@@ -31,6 +36,12 @@ public struct AnyRouter: Sendable, Router {
     /// Use showNextScreen() to trigger the next screen.
     @MainActor public var activeScreenQueue: [AnyDestination] {
         object.activeScreenQueue
+    }
+
+    /// The first detail route in this split environment, suitable for sidebar highlighting.
+    /// Returns nil when selection is empty or this router belongs to a separate presentation environment.
+    @MainActor public var selectedSplitViewDetailID: String? {
+        object.selectedSplitViewDetailID
     }
     
     /// If there is at least 1 screen in activeScreenQueue.
@@ -56,6 +67,16 @@ public struct AnyRouter: Sendable, Router {
     /// If a modal is currently displayed on this screen.
     @MainActor public var hasActiveModal: Bool {
         !object.activeModals.isEmpty
+    }
+
+    /// Active toasts on this screen, in presentation order (oldest first).
+    @MainActor public var activeToasts: [AnyToast] {
+        object.activeToasts
+    }
+
+    /// Whether this screen has at least one active toast.
+    @MainActor public var hasActiveToast: Bool {
+        !activeToasts.isEmpty
     }
     
     /// Active transition heirarchy on this screen.
@@ -311,6 +332,67 @@ public struct AnyRouter: Sendable, Router {
         object.dismissAllAlerts()
     }
 
+    // MARK: TOASTS
+
+    /// Show a custom toast above this screen's custom modals, respecting safe areas.
+    /// Toasts stack independently at each position with the newest nearest the edge.
+    /// The view supplies its complete design and any interactive dismissal controls;
+    /// touches outside the toast pass through to the content beneath it.
+    ///
+    /// - Parameters:
+    ///   - id: Identifier for dismissal. Reusing an active ID replaces it and restarts its timer.
+    ///   - position: Edge and horizontal alignment of the toast stack.
+    ///   - transition: Insertion/removal transition; nil moves from the selected edge and fades.
+    ///   - animation: Animation for presentation, dismissal, and stack reflow.
+    ///   - duration: Lifetime from presentation, including time while covered. Nil persists until
+    ///     dismissed; zero or negative durations dismiss immediately.
+    ///   - onDismiss: Called once when removed, before the exit animation ends.
+    ///   - destination: The complete toast view.
+    @MainActor public func showToast<T: View>(
+        id: String = UUID().uuidString,
+        position: ToastPosition = .top,
+        transition: AnyTransition? = nil,
+        animation: Animation = .easeInOut(duration: 0.25),
+        duration: Duration? = .seconds(3),
+        onDismiss: (() -> Void)? = nil,
+        @ViewBuilder destination: () -> T
+    ) {
+        object.showToast(toast: AnyToast(
+            id: id,
+            position: position,
+            transition: transition,
+            animation: animation,
+            duration: duration,
+            onDismiss: onDismiss,
+            destination: destination
+        ))
+    }
+
+    /// Show a toast on this screen.
+    @MainActor public func showToast(toast: AnyToast) {
+        object.showToast(toast: toast)
+    }
+
+    /// Show a toast on this screen.
+    @MainActor public func showToast(_ toast: AnyToast) {
+        object.showToast(toast: toast)
+    }
+
+    /// Dismiss the most recently presented toast on this screen.
+    @MainActor public func dismissToast() {
+        object.dismissToast()
+    }
+
+    /// Dismiss the toast with this ID on this screen.
+    @MainActor public func dismissToast(id: String) {
+        object.dismissToast(id: id)
+    }
+
+    /// Dismiss all toasts on this screen.
+    @MainActor public func dismissAllToasts() {
+        object.dismissAllToasts()
+    }
+
     // MARK: MODALS
     
     
@@ -323,7 +405,8 @@ public struct AnyRouter: Sendable, Router {
     ///   - backgroundColor: Background color behind the modal, if applicable.
     ///   - backgroundEffect: Background effect behind the modal, if applicable.
     ///   - dismissOnBackgroundTap: If there is a background color/effect, add tap gesture that dismisses the modal.
-    ///   - ignoreSafeArea: Ignore screen's safe area when displayed.
+    ///   - ignoreSafeArea: Ignore screen's safe area with overlay placement.
+    ///   - placement: Area used for modal content; adaptive placement always respects safe areas.
     ///   - onDismiss: Closure that triggers when modal dismisses.
     ///   - destination: The modal View.
     @MainActor public func showModal<T>(
@@ -335,6 +418,7 @@ public struct AnyRouter: Sendable, Router {
         backgroundEffect: BackgroundEffect? = nil,
         dismissOnBackgroundTap: Bool = true,
         ignoreSafeArea: Bool = true,
+        placement: ModalPlacement = .overlay,
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder destination: @escaping () -> T
     ) where T : View {
@@ -347,6 +431,7 @@ public struct AnyRouter: Sendable, Router {
                 backgroundEffect: backgroundEffect,
                 dismissOnBackgroundTap: dismissOnBackgroundTap,
                 ignoreSafeArea: ignoreSafeArea,
+                placement: placement,
                 destination: destination,
                 onDismiss: onDismiss
             )
@@ -354,7 +439,7 @@ public struct AnyRouter: Sendable, Router {
     }
     
     /// Convenience method to show a modal with basic animation and display logic.
-    @MainActor public func showBasicModal<T>(@ViewBuilder destination: @escaping () -> T) where T : View {
+    @MainActor public func showBasicModal<T>(placement: ModalPlacement = .overlay, @ViewBuilder destination: @escaping () -> T) where T : View {
         showModal(
             transition: AnyTransition.opacity.animation(.easeInOut),
             animation: .easeInOut,
@@ -362,12 +447,13 @@ public struct AnyRouter: Sendable, Router {
             backgroundColor: Color.black.opacity(0.3),
             dismissOnBackgroundTap: true,
             ignoreSafeArea: true,
+            placement: placement,
             destination: destination
         )
     }
     
     /// Convenience method to show a modal with basic animation and display logic.
-    @MainActor public func showBottomModal<T>(@ViewBuilder destination: @escaping () -> T) where T : View {
+    @MainActor public func showBottomModal<T>(placement: ModalPlacement = .overlay, @ViewBuilder destination: @escaping () -> T) where T : View {
         showModal(
             transition: AnyTransition.move(edge: .bottom),
             animation: .easeInOut,
@@ -375,6 +461,7 @@ public struct AnyRouter: Sendable, Router {
             backgroundColor: Color.black.opacity(0.3),
             dismissOnBackgroundTap: true,
             ignoreSafeArea: true,
+            placement: placement,
             destination: destination
         )
     }
@@ -618,6 +705,7 @@ extension AnyRouter: Identifiable, Hashable, Equatable {
 
     public static func == (lhs: AnyRouter, rhs: AnyRouter) -> Bool {
         lhs.id == rhs.id && lhs.rootRouterId == rhs.rootRouterId
+            && lhs.selectionIdentity == rhs.selectionIdentity && lhs.toastIdentity == rhs.toastIdentity
     }
 
     public func hash(into hasher: inout Hasher) {

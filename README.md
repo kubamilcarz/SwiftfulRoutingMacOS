@@ -8,6 +8,7 @@
 - ✅ Segues
 - ✅ Alerts
 - ✅ Modals
+- ✅ Toasts
 - ✅ Transitions
 - ✅ Modules
 
@@ -77,11 +78,13 @@ Examples:
 router.showScreen()
 router.showAlert()
 router.showModal()
+router.showToast { Text("Saved") }
 router.showTransition()
 router.showModule()
 router.dismissScreen()
 router.dismissAlert()
 router.dismissModal()
+router.dismissToast()
 router.dismissTransition()
 router.dismissModule()
 ```
@@ -230,6 +233,112 @@ RouterView(addNavigationStack: false) { router in
 ```
 
 </details>
+
+## Native split navigation
+
+On iOS 17, macOS 14, tvOS 17, and watchOS 10 or later, use a two-column `NavigationSplitView`:
+
+```swift
+RouterView(navigationSplitView: true) { router in
+    List {
+        Button("Projects") {
+            router.showScreen(.push, id: "projects") { detailRouter in
+                ProjectsView(router: detailRouter)
+            }
+        }
+    }
+}
+```
+
+Root content stays in the sidebar. A default `.push` from the sidebar selects a detail and clears the previous detail history. Pushes from detail screens navigate deeper; pushing from an earlier detail replaces its descendants. Explicit `.append` and `.insertAfter(id:)` locations retain their existing insertion behavior.
+
+Selecting the same sidebar route ID again replaces that route and clears its detail history, including sheets above it. Replaced routes receive their `onDismiss` callbacks, deepest first, and the new selected detail starts with fresh view-owned state. To keep the current detail history instead, ignore an unchanged selection in your app's selection action (as in the example below).
+
+The first detail route is available as `router.selectedSplitViewDetailID` for sidebar highlighting. Pass stable destination IDs when using it. The property is `nil` with no selection, in ordinary routers, and in separate sheet/full-screen presentation environments.
+
+Customize the placeholder and optionally bind native column visibility:
+
+```swift
+@State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+
+var body: some View {
+    RouterView(
+        navigationSplitView: true,
+        columnVisibility: $columnVisibility
+    ) { router in
+        SidebarView(router: router)
+    } emptyDetail: { router in
+        Text("Choose a project")
+    }
+}
+```
+
+Without `emptyDetail`, the detail column displays “Select an item”. The placeholder receives the sidebar router. Native compact layouts start in the sidebar and show detail after selection. Back through detail history retains the selection; back from the first detail clears it and returns to the sidebar. Hiding the sidebar or changing layout preserves navigation state. The visibility binding controls expanded layouts; SwiftUI manages collapsed column visibility.
+
+Existing dismissal methods work across both columns. Dismissing the first detail or calling `dismissPushStack()` clears selection and restores the placeholder. Sheets and full-screen presentations keep independent navigation stacks. With module support, split configuration applies to the initial module only.
+
+Split mode takes precedence over `addNavigationStack`. `navigationSplitView: false` uses existing navigation behavior. Existing initializer availability and package deployment minimums are unchanged; only split-mode overloads require the newer OS versions above.
+
+### Native sidebar selection
+
+`selectedSplitViewDetailID` is read-only. Connect `List(selection:)` through an adapter that opens a route when selection changes. Keep the router in the view environment so highlighting updates with programmatic navigation and dismissal:
+
+```swift
+struct Project: Identifiable {
+    let id: UUID
+    let name: String
+}
+
+struct ProjectsSidebar: View {
+    @Environment(\.router) private var router
+    let projects: [Project]
+
+    private var selection: Binding<String?> {
+        Binding {
+            router.selectedSplitViewDetailID
+        } set: { routeID in
+            // Optional: preserve detail history when selecting the same item.
+            guard routeID != router.selectedSplitViewDetailID else { return }
+            guard let routeID else {
+                router.dismissPushStack()
+                return
+            }
+            guard let project = projects.first(where: { $0.id.uuidString == routeID }) else { return }
+            router.showScreen(.push, id: routeID) { detailRouter in
+                Text(project.name) // Or build your detail screen with detailRouter.
+                    .navigationTitle(project.name)
+            }
+        }
+    }
+
+    var body: some View {
+        List(projects, selection: selection) { project in
+            Label(project.name, systemImage: "folder")
+                .tag(project.id.uuidString)
+        }
+        .navigationTitle("Projects")
+        .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
+    }
+}
+
+// Inside an app view with a projects collection:
+RouterView(navigationSplitView: true) { _ in
+    ProjectsSidebar(projects: projects)
+} emptyDetail: { _ in
+    ContentUnavailableView("Choose a project", systemImage: "folder")
+}
+.navigationSplitViewStyle(.balanced)
+```
+
+Use IDs that are unique within the router's route history. Column widths belong on the sidebar or detail content; native split styles can be applied to `RouterView` without package-specific configuration.
+
+### Changing navigation mode
+
+The `navigationSplitView` argument can change during the router's lifetime. The existing router and route history are retained: the first root push becomes the selected detail, and the remaining pushes become its detail history. Switching back restores the same sequence to the ordinary navigation stack. Empty histories show the split placeholder. Existing sheets and their independent push histories remain part of the same presentation environment, and a mode change does not call route dismissal callbacks.
+
+Changing container types can recreate SwiftUI destination views and their local `@State`. Keep edits that must survive mode changes in an app-owned model. A regular-to-compact size change within split mode is handled by the native split view; it does not require changing `navigationSplitView`.
+
+This API manages two columns. A collection → project → item flow navigates within detail after the first selection; it does not create a third column.
 
 ## Show Screens
 
@@ -610,7 +719,7 @@ router.showModal(
     backgroundColor: Color.black.opacity(0.1), // Color behind modal
     backgroundEffect: BackgroundEffect(effect: UIBlurEffect(style: .systemMaterialDark), intensity: 0.1), // Blur effect behind modal
     dismissOnBackgroundTap: true, // Add dismiss tap gesture on background layer
-    ignoreSafeArea: true, // Modal will safe area
+    ignoreSafeArea: true, // Modal ignores the safe area with default overlay placement
     onDismiss: {
         // Do something when modal is dismissed
     },
@@ -619,6 +728,33 @@ router.showModal(
     }
 )
 ```
+
+Opt in to adaptive placement for dialogs or controls that should stay clear of a fold:
+
+```swift
+router.showModal(
+    backgroundColor: .black.opacity(0.3),
+    placement: .adaptive
+) {
+    MyModal()
+}
+
+// Available on the convenience methods and AnyModal too:
+router.showBasicModal(placement: .adaptive) { MyModal() }
+router.showBottomModal(placement: .adaptive) { MyModal() }
+let adaptiveModal = AnyModal(placement: .adaptive) { MyModal() }
+```
+
+The default `.overlay` placement preserves existing behavior. `.adaptive` always respects safe areas,
+even when `ignoreSafeArea` is `true`. On iOS 27.1 or later, builds using Xcode 27.1 or later also
+avoid active division and occlusion regions. On older systems and other platforms, adaptive placement
+uses the safe area. The backdrop continues to fill the host, and background-tap dismissal is unchanged.
+
+Modal alignment chooses the side of the fold: leading/trailing for a vertical fold and top/bottom
+for a horizontal fold. Centered modals prefer the trailing side (including in right-to-left layouts)
+or the upper side, respectively. Active camera occlusions further reduce the available region.
+Use flexible sizing or scrolling so the modal fits; content exceeding the selected region is clipped.
+Placement updates as the container resizes or reserved regions change without replacing the modal.
 
 Modal methods also accept `AnyModal` as a convenience.
 
@@ -683,6 +819,84 @@ router.showBottomModal {
 ```
 
 </details>
+
+## Show Toasts
+
+Toasts accept any SwiftUI view, which controls their complete design and interactive controls.
+They appear above the calling screen's custom modals. Native sheets and alerts retain their
+system layering; show a toast from a sheet's router to display it within that sheet.
+
+```swift
+router.showToast {
+    Text("Saved")
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+}
+
+router.showToast(
+    id: "upload",
+    position: .bottomTrailing,
+    transition: .scale.combined(with: .opacity),
+    animation: .spring(response: 0.3),
+    duration: .seconds(5),
+    onDismiss: { print("Upload toast dismissed") }
+) {
+    Label("Upload complete", systemImage: "checkmark.circle.fill")
+        .padding()
+        .background(.green, in: Capsule())
+}
+
+// Use nil duration for a persistent toast with your own dismissal control.
+router.showToast(id: "undo", duration: nil) {
+    HStack {
+        Text("Item deleted")
+        Button("Dismiss") { router.dismissToast(id: "undo") }
+    }
+    .padding()
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+}
+
+let toast = AnyToast(position: .topLeading) { Text("Connected") }
+router.showToast(toast)
+
+router.dismissToast() // Most recently presented toast on this router.
+router.dismissToast(id: "upload")
+router.dismissAllToasts() // This router only.
+router.activeToasts // Oldest first.
+router.hasActiveToast
+```
+
+The defaults are `.top`, three seconds, and an edge movement with opacity animated over
+0.25 seconds. Positions are `.top`, `.topLeading`, `.topTrailing`, `.bottom`,
+`.bottomLeading`, and `.bottomTrailing`; leading/trailing follow the language direction.
+Each position has an independent stack with 8-point spacing and 16-point safe-area insets.
+New toasts sit nearest the selected edge. Large views in separate stacks can overlap.
+
+Each toast has its own timer, starting when presented and continuing while the screen is
+covered. Durations use Swift's `Duration`, such as `.seconds(3)` or `.milliseconds(500)`.
+A `nil` duration persists until dismissal; zero or negative durations dismiss
+immediately. Reusing an active ID replaces that toast and restarts its timer. IDs are local to
+each router. Removing a screen dismisses its toasts and cancels their timers.
+
+`onDismiss` fires once when a toast is removed from routing state, before its exit animation
+finishes, including replacement and screen removal. Toasts add no dimming, tap, or swipe
+gestures. Touches outside their views pass through. Reduce Motion replaces movement with
+an opacity transition and disables animated stack reflow. The supplied view controls its own
+accessibility labels and actions; use persistent toasts for actions that must remain available.
+
+## Duo regression validation
+
+Custom transition swipe-back uses a local content-edge band rather than a screen-sized overlay.
+It respects safe-area insets and, on iOS 27.1+, excludes active reserved regions. Gestures are
+observed simultaneously with child controls, and vertical scrolling does not trigger a horizontal
+swipe-back. The gesture state resets automatically when a drag ends or is cancelled.
+
+The automated split hosting tests cover compact/regular changes, repeated resizes within the same
+size class, asymmetric insets, selection-only and nested detail histories, open resizable sheets,
+and immediate native Back actions. Actual folding, rotation, and Split View multitasking checks
+are documented in the [Duo regression harness](Examples/DuoRegressionHarness/README.md), which records
+real window/hinge changes and retains routing failures in a report. Hosted size overrides are
+synthetic coverage and do not establish that this real-pose matrix passed.
 
 ## Show Transitions
 
@@ -1265,7 +1479,7 @@ This package includes a `.claude/swiftful-routing-rules.md` with usage guideline
 
 - **iOS 16.0+**
 - **macOS 12.0+**
-- **tvOS 14.0+**
+- **tvOS 16.0+**
 
 ## License
 
