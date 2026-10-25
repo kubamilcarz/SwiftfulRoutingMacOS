@@ -817,6 +817,20 @@ router.showBottomModal {
 
 </details>
 
+## Duo regression validation
+
+Custom transition swipe-back uses a local content-edge band rather than a screen-sized overlay.
+It respects safe-area insets and, on iOS 27.1+, excludes active reserved regions. Gestures are
+observed simultaneously with child controls, and vertical scrolling does not trigger a horizontal
+swipe-back. The gesture state resets automatically when a drag ends or is cancelled.
+
+The automated split hosting tests cover compact/regular changes, repeated resizes within the same
+size class, asymmetric insets, selection-only and nested detail histories, open resizable sheets,
+and immediate native Back actions. Actual folding, rotation, and Split View multitasking checks
+are documented in the [Duo regression harness](Examples/DuoRegressionHarness/README.md), which records
+real window/hinge changes and retains routing failures in a report. Hosted size overrides are
+synthetic coverage and do not establish that this real-pose matrix passed.
+
 ## Show Transitions
 
 <details>
