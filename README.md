@@ -716,7 +716,7 @@ router.showModal(
     backgroundColor: Color.black.opacity(0.1), // Color behind modal
     backgroundEffect: BackgroundEffect(effect: UIBlurEffect(style: .systemMaterialDark), intensity: 0.1), // Blur effect behind modal
     dismissOnBackgroundTap: true, // Add dismiss tap gesture on background layer
-    ignoreSafeArea: true, // Modal will safe area
+    ignoreSafeArea: true, // Modal ignores the safe area with default overlay placement
     onDismiss: {
         // Do something when modal is dismissed
     },
@@ -725,6 +725,33 @@ router.showModal(
     }
 )
 ```
+
+Opt in to adaptive placement for dialogs or controls that should stay clear of a fold:
+
+```swift
+router.showModal(
+    backgroundColor: .black.opacity(0.3),
+    placement: .adaptive
+) {
+    MyModal()
+}
+
+// Available on the convenience methods and AnyModal too:
+router.showBasicModal(placement: .adaptive) { MyModal() }
+router.showBottomModal(placement: .adaptive) { MyModal() }
+let adaptiveModal = AnyModal(placement: .adaptive) { MyModal() }
+```
+
+The default `.overlay` placement preserves existing behavior. `.adaptive` always respects safe areas,
+even when `ignoreSafeArea` is `true`. On iOS 27.1 or later, builds using Xcode 27.1 or later also
+avoid active division and occlusion regions. On older systems and other platforms, adaptive placement
+uses the safe area. The backdrop continues to fill the host, and background-tap dismissal is unchanged.
+
+Modal alignment chooses the side of the fold: leading/trailing for a vertical fold and top/bottom
+for a horizontal fold. Centered modals prefer the trailing side (including in right-to-left layouts)
+or the upper side, respectively. Active camera occlusions further reduce the available region.
+Use flexible sizing or scrolling so the modal fits; content exceeding the selected region is clipped.
+Placement updates as the container resizes or reserved regions change without replacing the modal.
 
 Modal methods also accept `AnyModal` as a convenience.
 

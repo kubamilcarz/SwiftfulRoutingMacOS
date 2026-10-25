@@ -8,14 +8,6 @@ import Foundation
 import SwiftUI
 import SwiftfulRecursiveUI
 
-#if os(watchOS)
-import WatchKit
-#elseif canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
 struct TransitionSupportView<Content:View>: View {
     
     var behavior: TransitionMemoryBehavior = .keepPrevious
@@ -25,17 +17,7 @@ struct TransitionSupportView<Content:View>: View {
     let currentTransition: TransitionOption
     let onDidSwipeBack: () -> Void
 
-    @State private var viewFrame: CGRect = {
-        #if os(watchOS)
-        WKInterfaceDevice.current().screenBounds
-        #elseif canImport(UIKit)
-        UIScreen.main.bounds
-        #elseif canImport(AppKit)
-        NSScreen.main?.frame ?? .zero
-        #else
-        .zero
-        #endif
-    }()
+    @State private var viewFrame: CGRect = .zero
 
     var body: some View {
         ZStack {
@@ -71,20 +53,11 @@ struct TransitionSupportView<Content:View>: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .modifier(ContainerFrameViewModifier(frame: $viewFrame))
         .transactionAnimationIfAvailable(
             value: (transitions.last?.id ?? "") + currentTransition.id,
             transition: currentTransition
         )
-//        .animation(currentTransition.animation, value: (transitions.last?.id ?? "") + currentTransition.id)
-//        .ifSatisfiesCondition(viewFrame == .zero, transform: { content in
-//            content
-//                .readingFrame(onChange: { frame in
-//                    // Add +150 to account for safe areas
-//                    self.viewFrame = frame
-////                    self.viewFrame = UIScreen.main.bounds
-////                    self.viewFrame = CGRect(x: 0, y: 0, width: frame.width, height: frame.height)
-//                })
-//        })
     }
 }
 

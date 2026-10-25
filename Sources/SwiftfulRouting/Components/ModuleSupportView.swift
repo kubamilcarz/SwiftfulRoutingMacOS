@@ -8,14 +8,6 @@ import Foundation
 import SwiftUI
 import SwiftfulRecursiveUI
 
-#if os(watchOS)
-import WatchKit
-#elseif canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
 struct ModuleSupportView<Content:View>: View {
     
     @StateObject private var viewModel = ModuleViewModel()
@@ -26,17 +18,7 @@ struct ModuleSupportView<Content:View>: View {
     
     @ViewBuilder var content: (AnyRouter) -> Content
 
-    @State private var viewFrame: CGRect = {
-        #if os(watchOS)
-        WKInterfaceDevice.current().screenBounds
-        #elseif canImport(UIKit)
-        UIScreen.main.bounds
-        #elseif canImport(AppKit)
-        NSScreen.main?.frame ?? .zero
-        #else
-        .zero
-        #endif
-    }()
+    @State private var viewFrame: CGRect = .zero
 
     var body: some View {
         ZStack {
@@ -81,6 +63,7 @@ struct ModuleSupportView<Content:View>: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .modifier(ContainerFrameViewModifier(frame: $viewFrame))
         .transactionAnimationIfAvailable(
             value: (viewModel.modules.last?.id ?? "") + viewModel.currentTransition.id,
             transition: viewModel.currentTransition

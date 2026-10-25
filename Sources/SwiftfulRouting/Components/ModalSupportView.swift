@@ -24,8 +24,7 @@ struct ModalSupportView: View {
                 
                 return LazyZStack(allowSimultaneous: true, selection: true) { (showView1: Bool) in
                     if showView1 {
-                        modal.destination
-                            .modalFrame(ignoreSafeArea: modal.ignoreSafeArea, alignment: modal.alignment)
+                        ModalContentView(modal: modal)
                             .transition(modal.transition.animation(modal.animation))
                             .zIndex(dataIndex + 2)
                     } else {
@@ -65,20 +64,4 @@ struct ModalSupportView: View {
         }
     }
 
-}
-
-fileprivate extension View {
-    
-    @ViewBuilder
-    func modalFrame(ignoreSafeArea: Bool, alignment: Alignment) -> some View {
-        if ignoreSafeArea {
-            self
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
-                .ignoresSafeArea()
-        } else {
-            self
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
-        }
-    }
-    
 }

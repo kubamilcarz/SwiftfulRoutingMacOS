@@ -16,6 +16,7 @@ public struct AnyModal: Identifiable, Equatable {
     public private(set) var backgroundEffect: BackgroundEffect?
     public private(set) var dismissOnBackgroundTap: Bool
     public private(set) var ignoreSafeArea: Bool
+    public private(set) var placement: ModalPlacement
     public private(set) var destination: AnyView
     public private(set) var onDismiss: (() -> Void)?
     public private(set) var isRemoved: Bool = false
@@ -29,7 +30,8 @@ public struct AnyModal: Identifiable, Equatable {
     ///   - backgroundColor: Background color behind the modal, if applicable.
     ///   - backgroundEffect: Background effect behind the modal, if applicable.
     ///   - dismissOnBackgroundTap: If there is a background color/effect, add tap gesture that dismisses the modal.
-    ///   - ignoreSafeArea: Ignore screen's safe area when displayed.
+    ///   - ignoreSafeArea: Ignore screen's safe area with overlay placement.
+    ///   - placement: Area used for modal content; adaptive placement always respects safe areas.
     ///   - onDismiss: Closure that triggers when modal dismisses.
     ///   - destination: The modal View.
     public init<T:View>(
@@ -41,6 +43,7 @@ public struct AnyModal: Identifiable, Equatable {
         backgroundEffect: BackgroundEffect? = nil,
         dismissOnBackgroundTap: Bool = true,
         ignoreSafeArea: Bool = true,
+        placement: ModalPlacement = .overlay,
         destination: @escaping () -> T,
         onDismiss: (() -> Void)? = nil
     ) {
@@ -52,6 +55,7 @@ public struct AnyModal: Identifiable, Equatable {
         self.backgroundEffect = backgroundEffect
         self.dismissOnBackgroundTap = dismissOnBackgroundTap
         self.ignoreSafeArea = ignoreSafeArea
+        self.placement = placement
         self.destination = AnyView(
             destination()
         )

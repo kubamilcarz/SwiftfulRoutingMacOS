@@ -332,7 +332,8 @@ public struct AnyRouter: Sendable, Router {
     ///   - backgroundColor: Background color behind the modal, if applicable.
     ///   - backgroundEffect: Background effect behind the modal, if applicable.
     ///   - dismissOnBackgroundTap: If there is a background color/effect, add tap gesture that dismisses the modal.
-    ///   - ignoreSafeArea: Ignore screen's safe area when displayed.
+    ///   - ignoreSafeArea: Ignore screen's safe area with overlay placement.
+    ///   - placement: Area used for modal content; adaptive placement always respects safe areas.
     ///   - onDismiss: Closure that triggers when modal dismisses.
     ///   - destination: The modal View.
     @MainActor public func showModal<T>(
@@ -344,6 +345,7 @@ public struct AnyRouter: Sendable, Router {
         backgroundEffect: BackgroundEffect? = nil,
         dismissOnBackgroundTap: Bool = true,
         ignoreSafeArea: Bool = true,
+        placement: ModalPlacement = .overlay,
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder destination: @escaping () -> T
     ) where T : View {
@@ -356,6 +358,7 @@ public struct AnyRouter: Sendable, Router {
                 backgroundEffect: backgroundEffect,
                 dismissOnBackgroundTap: dismissOnBackgroundTap,
                 ignoreSafeArea: ignoreSafeArea,
+                placement: placement,
                 destination: destination,
                 onDismiss: onDismiss
             )
@@ -363,7 +366,7 @@ public struct AnyRouter: Sendable, Router {
     }
     
     /// Convenience method to show a modal with basic animation and display logic.
-    @MainActor public func showBasicModal<T>(@ViewBuilder destination: @escaping () -> T) where T : View {
+    @MainActor public func showBasicModal<T>(placement: ModalPlacement = .overlay, @ViewBuilder destination: @escaping () -> T) where T : View {
         showModal(
             transition: AnyTransition.opacity.animation(.easeInOut),
             animation: .easeInOut,
@@ -371,12 +374,13 @@ public struct AnyRouter: Sendable, Router {
             backgroundColor: Color.black.opacity(0.3),
             dismissOnBackgroundTap: true,
             ignoreSafeArea: true,
+            placement: placement,
             destination: destination
         )
     }
     
     /// Convenience method to show a modal with basic animation and display logic.
-    @MainActor public func showBottomModal<T>(@ViewBuilder destination: @escaping () -> T) where T : View {
+    @MainActor public func showBottomModal<T>(placement: ModalPlacement = .overlay, @ViewBuilder destination: @escaping () -> T) where T : View {
         showModal(
             transition: AnyTransition.move(edge: .bottom),
             animation: .easeInOut,
@@ -384,6 +388,7 @@ public struct AnyRouter: Sendable, Router {
             backgroundColor: Color.black.opacity(0.3),
             dismissOnBackgroundTap: true,
             ignoreSafeArea: true,
+            placement: placement,
             destination: destination
         )
     }
