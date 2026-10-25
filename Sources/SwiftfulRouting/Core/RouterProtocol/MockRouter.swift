@@ -36,6 +36,13 @@ struct MockRouter: Router {
     var activeModals: [AnyModal] {
         []
     }
+
+    var activeToasts: [AnyToast] { [] }
+
+    func showToast(toast: AnyToast) { printError() }
+    func dismissToast() { printError() }
+    func dismissToast(id: String) { printError() }
+    func dismissAllToasts() { printError() }
     
     var activeTransitions: [AnyTransitionDestination] {
         []

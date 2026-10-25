@@ -26,8 +26,9 @@ struct ToastSupportView: View {
             }
         }
         .transaction { transaction in
-            if reduceMotion, transaction.animation != nil {
-                transaction.animation = .easeInOut(duration: 0.2)
+            if reduceMotion {
+                // Reflow immediately; individual toast transitions can still fade.
+                transaction.animation = nil
             }
         }
     }
@@ -38,6 +39,8 @@ struct ToastSupportView: View {
     }
 
     private func transition(for toast: AnyToast) -> AnyTransition {
-        reduceMotion ? .opacity : toast.transition
+        reduceMotion
+            ? .opacity.animation(.easeInOut(duration: 0.2))
+            : toast.transition.animation(toast.animation)
     }
 }

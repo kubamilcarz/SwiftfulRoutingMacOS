@@ -4,6 +4,7 @@
 //
 //  Created by Nick Sarno on 4/19/25.
 //
+
 import SwiftUI
 
 @MainActor
@@ -11,8 +12,21 @@ final class RouterViewModel: ObservableObject {
     static let rootId = "root"
     @Published var navigationSplitView: Bool
 
-    init(navigationSplitView: Bool = false) {
+    init(
+        navigationSplitView: Bool = false,
+        toastSleep: @escaping @MainActor (TimeInterval) async throws -> Void = ToastPresentation.sleep(seconds:)
+    ) {
         self.navigationSplitView = navigationSplitView
+        self.toastSleep = toastSleep
+    }
+
+    private let toastSleep: @MainActor (TimeInterval) async throws -> Void
+    private var toastTimers: [UUID: Task<Void, Never>] = [:]
+    private var toastRoutersBeingDismissed: Set<String> = []
+    @Published private(set) var allToasts: [String: [ToastPresentation]] = [:]
+
+    deinit {
+        for timer in toastTimers.values { timer.cancel() }
     }
 
     var splitViewDestinations: [AnyDestination] {
@@ -127,6 +141,8 @@ extension RouterViewModel {
         case alertDismiss(alert: AnyAlert)
         case modalShow(modal: AnyModal)
         case modalDismiss(modal: AnyModal)
+        case toastShow(toast: AnyToast)
+        case toastDismiss(toast: AnyToast)
         case transitionShow(transition: AnyTransitionDestination)
         case transitionDismiss(transition: AnyTransitionDestination)
         case showSafari(url: URL)
@@ -167,6 +183,8 @@ extension RouterViewModel {
             case .alertDismiss:                                         return "Routing_Alert_Dismiss"
             case .modalShow:                                            return "Routing_Modal_Appear"
             case .modalDismiss:                                         return "Routing_Modal_Dismiss"
+            case .toastShow:                                            return "Routing_Toast_Appear"
+            case .toastDismiss:                                         return "Routing_Toast_Dismiss"
             case .transitionShow:                                       return "Routing_Transition_Appear"
             case .transitionDismiss:                                    return "Routing_Transition_Dismiss"
             case .showSafari:                                           return "Routing_Safari_Show"
@@ -232,6 +250,8 @@ extension RouterViewModel {
                 return alert.eventParameters
             case .modalShow(modal: let modal), .modalDismiss(modal: let modal):
                 return modal.eventParameters
+            case .toastShow(toast: let toast), .toastDismiss(toast: let toast):
+                return toast.eventParameters
             case .transitionShow(transition: let transition), .transitionDismiss(transition: let transition):
                 return transition.eventParameters
             case .showSafari(url: let url):
@@ -247,7 +267,7 @@ extension RouterViewModel {
             switch self {
             case .screenStackUpdated, .screenQueueUpdated, .modalStackUpdated, .transitionStackUpdated, .transitionQueueUpdated:
                 return .info
-            case .screenShow, .screenDismiss, .alertShow, .alertDismiss, .modalShow, .modalDismiss, .transitionShow, .transitionDismiss:
+            case .screenShow, .screenDismiss, .alertShow, .alertDismiss, .modalShow, .modalDismiss, .toastShow, .toastDismiss, .transitionShow, .transitionDismiss:
                 return .analytic
             default:
                 return .warning
@@ -454,6 +474,9 @@ extension RouterViewModel {
 
     private func didDismissScreens(_ screens: [AnyDestination]) {
         for screen in screens.reversed() {
+            toastRoutersBeingDismissed.insert(screen.id)
+            defer { toastRoutersBeingDismissed.remove(screen.id) }
+            dismissAllToasts(routerId: screen.id)
             if navigationSplitView {
                 dismissAllModals(routerId: screen.id)
                 activeAlert[screen.id] = nil
@@ -871,6 +894,86 @@ extension RouterViewModel {
         }
     }
     
+}
+
+// MARK: TOAST METHODS
+
+extension RouterViewModel {
+    func showToast(routerId: String, toast: AnyToast) {
+        // Ignore a stale router after its screen was removed, including dismissal callbacks.
+        guard !toastRoutersBeingDismissed.contains(routerId),
+              routerId == Self.rootId || activeScreenStacks.allScreens.contains(where: { $0.id == routerId }) else { return }
+
+        let replaced = removeToasts(routerId: routerId) { $0.toast.id == toast.id }
+        let presentation = ToastPresentation(toast: toast)
+        withAnimation(toast.animation) {
+            allToasts[routerId, default: []].append(presentation)
+        }
+        logger.trackEvent(event: Event.toastShow(toast: toast))
+
+        if let duration = toast.duration {
+            if duration.isFinite && duration > 0 {
+                let sleep = toastSleep
+                let presentationId = presentation.id
+                toastTimers[presentationId] = Task { [weak self] in
+                    do {
+                        try await sleep(duration)
+                        try Task.checkCancellation()
+                    } catch {
+                        return
+                    }
+                    self?.dismissToast(routerId: routerId, presentationId: presentationId)
+                }
+            } else {
+                dismissToast(routerId: routerId, presentationId: presentation.id)
+            }
+        }
+        // Install the new presentation first so reentrant callbacks cannot create duplicate IDs
+        // or have their new presentation overwritten when this method resumes.
+        notifyToastDismissals(replaced)
+    }
+
+    func dismissLastToast(routerId: String) {
+        guard let last = allToasts[routerId]?.last else { return }
+        dismissToast(routerId: routerId, presentationId: last.id)
+    }
+
+    func dismissToast(routerId: String, toastId: String) {
+        notifyToastDismissals(removeToasts(routerId: routerId) { $0.toast.id == toastId })
+    }
+
+    func dismissToast(routerId: String, presentationId: UUID) {
+        notifyToastDismissals(removeToasts(routerId: routerId) { $0.id == presentationId })
+    }
+
+    func dismissAllToasts(routerId: String) {
+        notifyToastDismissals(removeToasts(routerId: routerId) { _ in true }.reversed())
+    }
+
+    private func removeToasts(
+        routerId: String,
+        matching predicate: (ToastPresentation) -> Bool
+    ) -> [ToastPresentation] {
+        let items = allToasts[routerId] ?? []
+        let removed = items.filter(predicate)
+        guard let last = removed.last else { return [] }
+        for item in removed {
+            toastTimers.removeValue(forKey: item.id)?.cancel()
+        }
+        let removedIds = Set(removed.map(\.id))
+        let remaining = items.filter { !removedIds.contains($0.id) }
+        withAnimation(last.toast.animation) {
+            allToasts[routerId] = remaining.isEmpty ? nil : remaining
+        }
+        return removed
+    }
+
+    private func notifyToastDismissals<S: Sequence>(_ presentations: S) where S.Element == ToastPresentation {
+        for presentation in presentations {
+            logger.trackEvent(event: Event.toastDismiss(toast: presentation.toast))
+            presentation.toast.onDismiss?()
+        }
+    }
 }
 
 // MARK: MODAL METHODS

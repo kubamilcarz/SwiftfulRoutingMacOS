@@ -122,7 +122,10 @@ struct RouterViewInternal<Content: View>: View, Router {
                 }
             )
         )
-        
+
+        // Toasts sit above this router's custom modal content and background gestures.
+        .overlay(ToastSupportView(presentations: viewModel.allToasts[routerId] ?? []))
+
         #if DEBUG
         // logging on every router
         .onChange(of: viewModel.allModals[routerId] ?? []) { newValue in
@@ -280,6 +283,26 @@ struct RouterViewInternal<Content: View>: View, Router {
     
     var activeModals: [AnyModal] {
         viewModel.allModals[routerId]?.active ?? []
+    }
+
+    var activeToasts: [AnyToast] {
+        (viewModel.allToasts[routerId] ?? []).map(\.toast)
+    }
+
+    func showToast(toast: AnyToast) {
+        viewModel.showToast(routerId: routerId, toast: toast)
+    }
+
+    func dismissToast() {
+        viewModel.dismissLastToast(routerId: routerId)
+    }
+
+    func dismissToast(id: String) {
+        viewModel.dismissToast(routerId: routerId, toastId: id)
+    }
+
+    func dismissAllToasts() {
+        viewModel.dismissAllToasts(routerId: routerId)
     }
     
     var activeTransitions: [AnyTransitionDestination] {

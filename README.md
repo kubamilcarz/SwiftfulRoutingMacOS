@@ -8,6 +8,7 @@
 - ✅ Segues
 - ✅ Alerts
 - ✅ Modals
+- ✅ Toasts
 - ✅ Transitions
 - ✅ Modules
 
@@ -77,11 +78,13 @@ Examples:
 router.showScreen()
 router.showAlert()
 router.showModal()
+router.showToast { Text("Saved") }
 router.showTransition()
 router.showModule()
 router.dismissScreen()
 router.dismissAlert()
 router.dismissModal()
+router.dismissToast()
 router.dismissTransition()
 router.dismissModule()
 ```
@@ -816,6 +819,69 @@ router.showBottomModal {
 ```
 
 </details>
+
+## Show Toasts
+
+Toasts accept any SwiftUI view, which controls their complete design and interactive controls.
+They appear above the calling screen's custom modals. Native sheets and alerts retain their
+system layering; show a toast from a sheet's router to display it within that sheet.
+
+```swift
+router.showToast {
+    Text("Saved")
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+}
+
+router.showToast(
+    id: "upload",
+    position: .bottomTrailing,
+    transition: .scale.combined(with: .opacity),
+    animation: .spring(response: 0.3),
+    duration: 5,
+    onDismiss: { print("Upload toast dismissed") }
+) {
+    Label("Upload complete", systemImage: "checkmark.circle.fill")
+        .padding()
+        .background(.green, in: Capsule())
+}
+
+// Use nil duration for a persistent toast with your own dismissal control.
+router.showToast(id: "undo", duration: nil) {
+    HStack {
+        Text("Item deleted")
+        Button("Dismiss") { router.dismissToast(id: "undo") }
+    }
+    .padding()
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+}
+
+let toast = AnyToast(position: .topLeading) { Text("Connected") }
+router.showToast(toast)
+
+router.dismissToast() // Most recently presented toast on this router.
+router.dismissToast(id: "upload")
+router.dismissAllToasts() // This router only.
+router.activeToasts // Oldest first.
+router.hasActiveToast
+```
+
+The defaults are `.top`, three seconds, and an edge movement with opacity animated over
+0.25 seconds. Positions are `.top`, `.topLeading`, `.topTrailing`, `.bottom`,
+`.bottomLeading`, and `.bottomTrailing`; leading/trailing follow the language direction.
+Each position has an independent stack with 8-point spacing and 16-point safe-area insets.
+New toasts sit nearest the selected edge. Large views in separate stacks can overlap.
+
+Each toast has its own timer, starting when presented and continuing while the screen is
+covered. A `nil` duration persists until dismissal; nonpositive or nonfinite durations dismiss
+immediately. Reusing an active ID replaces that toast and restarts its timer. IDs are local to
+each router. Removing a screen dismisses its toasts and cancels their timers.
+
+`onDismiss` fires once when a toast is removed from routing state, before its exit animation
+finishes, including replacement and screen removal. Toasts add no dimming, tap, or swipe
+gestures. Touches outside their views pass through. Reduce Motion replaces movement with
+an opacity transition and disables animated stack reflow. The supplied view controls its own
+accessibility labels and actions; use persistent toasts for actions that must remain available.
 
 ## Duo regression validation
 

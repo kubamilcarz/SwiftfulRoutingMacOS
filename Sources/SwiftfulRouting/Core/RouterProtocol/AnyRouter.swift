@@ -66,6 +66,16 @@ public struct AnyRouter: Sendable, Router {
     @MainActor public var hasActiveModal: Bool {
         !object.activeModals.isEmpty
     }
+
+    /// Active toasts on this screen, in presentation order (oldest first).
+    @MainActor public var activeToasts: [AnyToast] {
+        object.activeToasts
+    }
+
+    /// Whether this screen has at least one active toast.
+    @MainActor public var hasActiveToast: Bool {
+        !activeToasts.isEmpty
+    }
     
     /// Active transition heirarchy on this screen.
     @MainActor public var activeTransitions: [AnyTransitionDestination] {
@@ -318,6 +328,67 @@ public struct AnyRouter: Sendable, Router {
     /// Dismiss all alert displayed on all screens.
     @MainActor public func dismissAllAlerts() {
         object.dismissAllAlerts()
+    }
+
+    // MARK: TOASTS
+
+    /// Show a custom toast above this screen's custom modals, respecting safe areas.
+    /// Toasts stack independently at each position with the newest nearest the edge.
+    /// The view supplies its complete design and any interactive dismissal controls;
+    /// touches outside the toast pass through to the content beneath it.
+    ///
+    /// - Parameters:
+    ///   - id: Identifier for dismissal. Reusing an active ID replaces it and restarts its timer.
+    ///   - position: Edge and horizontal alignment of the toast stack.
+    ///   - transition: Insertion/removal transition; nil moves from the selected edge and fades.
+    ///   - animation: Animation for presentation, dismissal, and stack reflow.
+    ///   - duration: Seconds from presentation, including time while covered. Nil persists until
+    ///     dismissed; nonpositive or nonfinite values dismiss immediately.
+    ///   - onDismiss: Called once when removed, before the exit animation ends.
+    ///   - destination: The complete toast view.
+    @MainActor public func showToast<T: View>(
+        id: String = UUID().uuidString,
+        position: ToastPosition = .top,
+        transition: AnyTransition? = nil,
+        animation: Animation = .easeInOut(duration: 0.25),
+        duration: TimeInterval? = 3,
+        onDismiss: (() -> Void)? = nil,
+        @ViewBuilder destination: () -> T
+    ) {
+        object.showToast(toast: AnyToast(
+            id: id,
+            position: position,
+            transition: transition,
+            animation: animation,
+            duration: duration,
+            onDismiss: onDismiss,
+            destination: destination
+        ))
+    }
+
+    /// Show a toast on this screen.
+    @MainActor public func showToast(toast: AnyToast) {
+        object.showToast(toast: toast)
+    }
+
+    /// Show a toast on this screen.
+    @MainActor public func showToast(_ toast: AnyToast) {
+        object.showToast(toast: toast)
+    }
+
+    /// Dismiss the most recently presented toast on this screen.
+    @MainActor public func dismissToast() {
+        object.dismissToast()
+    }
+
+    /// Dismiss the toast with this ID on this screen.
+    @MainActor public func dismissToast(id: String) {
+        object.dismissToast(id: id)
+    }
+
+    /// Dismiss all toasts on this screen.
+    @MainActor public func dismissAllToasts() {
+        object.dismissAllToasts()
     }
 
     // MARK: MODALS
