@@ -13,20 +13,24 @@ struct SplitNavigationState {
     private(set) var branch: [String] = []
     private(set) var path: [String] = []
     private var growthGuard: (sourcePath: [String], createdAt: Date)?
-    private var layoutChangedAt: Date?
+    private(set) var isChangingLayout = false
+    private var presentedRouteID: String?
 
-    mutating func layoutDidChange(now: Date = Date()) {
-        layoutChangedAt = now
+    mutating func layoutDidChange() {
+        isChangingLayout = true
+        presentedRouteID = nil
+    }
+
+    mutating func layoutDidSettle() {
+        isChangingLayout = false
     }
 
     mutating func didPresent(routeID: String) {
+        presentedRouteID = routeID
         if branch.last == routeID {
             growthGuard = nil
+            layoutDidSettle()
         }
-    }
-
-    private func isChangingLayout(now: Date) -> Bool {
-        layoutChangedAt.map { now.timeIntervalSince($0) <= 0.5 } ?? false
     }
 
     mutating func synchronize(with modelBranch: [String], now: Date = Date()) {
@@ -38,11 +42,16 @@ struct SplitNavigationState {
         }
         branch = modelBranch
         path = Array(modelBranch.dropFirst())
+        isChangingLayout = false
+        presentedRouteID = nil
     }
 
     /// A valid detail pop always retains the selected route, even when its history becomes empty.
     func popTarget(for newPath: [String], modelBranch: [String], now: Date = Date()) -> String? {
-        guard !isChangingLayout(now: now), branch == modelBranch,
+        let target = newPath.last ?? branch.first
+        // A destination appearing at the shortened path confirms a real pop, including
+        // one made before the column transition has finished. Layout writes alone do not.
+        guard (!isChangingLayout || presentedRouteID == target), branch == modelBranch,
               let selectedID = branch.first,
               isStrictPrefixPath(newPath, of: path),
               !shouldIgnoreTransientPrefixShrink(
@@ -54,7 +63,7 @@ struct SplitNavigationState {
         return newPath.last ?? selectedID
     }
 
-    func canClearSelection(modelBranch: [String], now: Date = Date()) -> Bool {
-        !isChangingLayout(now: now) && branch == modelBranch && !branch.isEmpty && path.isEmpty
+    func canClearSelection(modelBranch: [String]) -> Bool {
+        !isChangingLayout && branch == modelBranch && !branch.isEmpty && path.isEmpty
     }
 }

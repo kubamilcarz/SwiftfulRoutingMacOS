@@ -249,6 +249,8 @@ RouterView(navigationSplitView: true) { router in
 
 Root content stays in the sidebar. A default `.push` from the sidebar selects a detail and clears the previous detail history. Pushes from detail screens navigate deeper; pushing from an earlier detail replaces its descendants. Explicit `.append` and `.insertAfter(id:)` locations retain their existing insertion behavior.
 
+Selecting the same sidebar route ID again replaces that route and clears its detail history, including sheets above it. Replaced routes receive their `onDismiss` callbacks, deepest first, and the new selected detail starts with fresh view-owned state. To keep the current detail history instead, ignore an unchanged selection in your app's selection action (as in the example below).
+
 The first detail route is available as `router.selectedSplitViewDetailID` for sidebar highlighting. Pass stable destination IDs when using it. The property is `nil` with no selection, in ordinary routers, and in separate sheet/full-screen presentation environments.
 
 Customize the placeholder and optionally bind native column visibility:
@@ -273,6 +275,67 @@ Without `emptyDetail`, the detail column displays “Select an item”. The plac
 Existing dismissal methods work across both columns. Dismissing the first detail or calling `dismissPushStack()` clears selection and restores the placeholder. Sheets and full-screen presentations keep independent navigation stacks. With module support, split configuration applies to the initial module only.
 
 Split mode takes precedence over `addNavigationStack`. `navigationSplitView: false` uses existing navigation behavior. Existing initializer availability and package deployment minimums are unchanged; only split-mode overloads require the newer OS versions above.
+
+### Native sidebar selection
+
+`selectedSplitViewDetailID` is read-only. Connect `List(selection:)` through an adapter that opens a route when selection changes. Keep the router in the view environment so highlighting updates with programmatic navigation and dismissal:
+
+```swift
+struct Project: Identifiable {
+    let id: UUID
+    let name: String
+}
+
+struct ProjectsSidebar: View {
+    @Environment(\.router) private var router
+    let projects: [Project]
+
+    private var selection: Binding<String?> {
+        Binding {
+            router.selectedSplitViewDetailID
+        } set: { routeID in
+            // Optional: preserve detail history when selecting the same item.
+            guard routeID != router.selectedSplitViewDetailID else { return }
+            guard let routeID else {
+                router.dismissPushStack()
+                return
+            }
+            guard let project = projects.first(where: { $0.id.uuidString == routeID }) else { return }
+            router.showScreen(.push, id: routeID) { detailRouter in
+                Text(project.name) // Or build your detail screen with detailRouter.
+                    .navigationTitle(project.name)
+            }
+        }
+    }
+
+    var body: some View {
+        List(projects, selection: selection) { project in
+            Label(project.name, systemImage: "folder")
+                .tag(project.id.uuidString)
+        }
+        .navigationTitle("Projects")
+        .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
+    }
+}
+
+// Inside an app view with a projects collection:
+RouterView(navigationSplitView: true) { _ in
+    ProjectsSidebar(projects: projects)
+} emptyDetail: { _ in
+    ContentUnavailableView("Choose a project", systemImage: "folder")
+}
+.navigationSplitViewStyle(.balanced)
+```
+
+Use IDs that are unique within the router's route history. Column widths belong on the sidebar or detail content; native split styles can be applied to `RouterView` without package-specific configuration.
+
+### Changing navigation mode
+
+The `navigationSplitView` argument can change during the router's lifetime. The existing router and route history are retained: the first root push becomes the selected detail, and the remaining pushes become its detail history. Switching back restores the same sequence to the ordinary navigation stack. Empty histories show the split placeholder. Existing sheets and their independent push histories remain part of the same presentation environment, and a mode change does not call route dismissal callbacks.
+
+Changing container types can recreate SwiftUI destination views and their local `@State`. Keep edits that must survive mode changes in an app-owned model. A regular-to-compact size change within split mode is handled by the native split view; it does not require changing `navigationSplitView`.
+
+This API manages two columns. A collection → project → item flow navigates within detail after the first selection; it does not create a third column.
 
 ## Show Screens
 

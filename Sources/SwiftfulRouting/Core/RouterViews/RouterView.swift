@@ -64,6 +64,8 @@ public struct RouterView<Content: View>: View {
 
     /// Uses root content as a sidebar and adapts pushes into detail selection and navigation.
     /// Split mode takes precedence over `addNavigationStack`.
+    /// Changing modes preserves the route history and router-owned state. SwiftUI can recreate
+    /// destination views when moving them between containers; keep persistent edits in a model.
     @available(iOS 17, macOS 14, tvOS 17, watchOS 10, *)
     public init(
         id: String? = nil,
@@ -140,16 +142,21 @@ public struct RouterView<Content: View>: View {
 struct RouterViewModelWrapper<Content: View>: View {
     
     @StateObject private var viewModel: RouterViewModel
+    private let navigationSplitView: Bool
     @ViewBuilder var content: Content
 
     init(navigationSplitView: Bool = false, @ViewBuilder content: () -> Content) {
         _viewModel = StateObject(wrappedValue: RouterViewModel(navigationSplitView: navigationSplitView))
+        self.navigationSplitView = navigationSplitView
         self.content = content()
     }
 
     var body: some View {
         content
             .environmentObject(viewModel)
+            .onChange(of: navigationSplitView) { newValue in
+                viewModel.navigationSplitView = newValue
+            }
 
             #if DEBUG
             .onChange(of: viewModel.activeScreenStacks) { newValue in

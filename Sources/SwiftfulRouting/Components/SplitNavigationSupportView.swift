@@ -51,12 +51,20 @@ struct SplitNavigationSupportView<Detail: View>: View {
                     isSidebarVisible = true
                     clearSelectionFromSidebarIfNeeded()
                 }
-                .onDisappear { isSidebarVisible = false }
+                .onDisappear {
+                    isSidebarVisible = false
+                    if isCompact, preferredCompactColumn == .detail {
+                        navigationState.layoutDidSettle()
+                        reconcileDetailPath()
+                    }
+                }
         } detail: {
             NavigationStack(path: $detailPath) {
                 Group {
                     if let selected = destinations.first {
                         selected.destination
+                            .id(selected.presentationID)
+                            .onAppear { didPresent(routeID: selected.id) }
                     } else {
                         emptyDetail(router)
                     }
@@ -65,19 +73,17 @@ struct SplitNavigationSupportView<Detail: View>: View {
                     if let destination = destinations.first(where: { $0.id == routeID })
                         ?? viewModel.allDestinationsById[routeID] {
                         destination.destination
-                            .onAppear { navigationState.didPresent(routeID: routeID) }
+                            .onAppear { didPresent(routeID: routeID) }
                     }
                 }
             }
         }
         .onAppear { synchronize() }
         .onChange(of: modelBranch) { _, _ in synchronize() }
-        .onChange(of: detailPath) { _, path in
-            if let target = navigationState.popTarget(for: path, modelBranch: modelBranch) {
-                viewModel.dismissScreens(to: target, animates: true)
-                synchronize()
-            } else if path != navigationState.path {
-                detailPath = navigationState.path
+        .onChange(of: detailPath) { _, _ in reconcileDetailPath() }
+        .onChange(of: navigationState.isChangingLayout) { _, changing in
+            if !changing {
+                clearSelectionFromSidebarIfNeeded()
             }
         }
         .onChange(of: preferredCompactColumn) { _, column in
@@ -88,8 +94,31 @@ struct SplitNavigationSupportView<Detail: View>: View {
         #if os(iOS)
         .onChange(of: horizontalSizeClass) { _, _ in
             navigationState.layoutDidChange()
+            // Reparenting columns may briefly prefer the sidebar. Keep the selected
+            // column until its appearance (or the sidebar disappearing) settles layout.
+            if !modelBranch.isEmpty {
+                preferredCompactColumn = .detail
+            }
         }
         #endif
+    }
+
+    private func didPresent(routeID: String) {
+        if navigationState.branch != modelBranch {
+            synchronize()
+        }
+        navigationState.didPresent(routeID: routeID)
+        reconcileDetailPath()
+    }
+
+    private func reconcileDetailPath() {
+        guard viewModel.navigationSplitView else { return }
+        if let target = navigationState.popTarget(for: detailPath, modelBranch: modelBranch) {
+            viewModel.dismissScreens(to: target, animates: true)
+            synchronize()
+        } else if !navigationState.isChangingLayout, detailPath != navigationState.path {
+            detailPath = navigationState.path
+        }
     }
 
     private func clearSelectionFromSidebarIfNeeded() {
@@ -97,7 +126,7 @@ struct SplitNavigationSupportView<Detail: View>: View {
         // visible sidebar represents returning across columns, and layout callbacks must settle first.
         Task { @MainActor in
             await Task.yield()
-            guard isCompact, isSidebarVisible, preferredCompactColumn == .sidebar,
+            guard viewModel.navigationSplitView, isCompact, isSidebarVisible, preferredCompactColumn == .sidebar,
                   navigationState.canClearSelection(modelBranch: modelBranch) else { return }
             viewModel.dismissPushStack(routeId: router.id, animates: true)
             synchronize()

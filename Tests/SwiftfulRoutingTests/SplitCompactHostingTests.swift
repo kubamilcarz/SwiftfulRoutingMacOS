@@ -97,6 +97,77 @@ final class SplitCompactHostingTests: XCTestCase {
     }
 
     @MainActor
+    @available(iOS 17, *)
+    func testSizeClassTransitionsPreserveHistoryAndAllowImmediateBack() async throws {
+        let sidebarAppeared = expectation(description: "Sidebar appeared")
+        let detailAppeared = expectation(description: "Detail appeared")
+        var capturedRouter: AnyRouter?
+        var capturedDetailRouter: AnyRouter?
+        let root = RouterView(navigationSplitView: true, columnVisibility: .constant(.all)) { router in
+            Text("Sidebar")
+                .navigationTitle("Sidebar")
+                .onAppear {
+                    if capturedRouter == nil {
+                        capturedRouter = router
+                        sidebarAppeared.fulfill()
+                    }
+                }
+        }
+        let controller = UIHostingController(rootView: root)
+        controller.traitOverrides.horizontalSizeClass = .regular
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map(UIWindow.init(windowScene:))
+            ?? UIWindow(frame: CGRect(x: 0, y: 0, width: 1024, height: 768))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        controller.view.layoutIfNeeded()
+        await fulfillment(of: [sidebarAppeared], timeout: 5)
+        let router = try XCTUnwrap(capturedRouter)
+        router.addScreenToQueue(destination: AnyDestination(id: "A", animates: false) { detailRouter in
+            Text("Detail A")
+                .navigationTitle("Detail A")
+                .onAppear {
+                    if capturedDetailRouter == nil {
+                        capturedDetailRouter = detailRouter
+                        detailAppeared.fulfill()
+                    }
+                }
+        })
+        router.showNextScreen()
+        await fulfillment(of: [detailAppeared], timeout: 5)
+        let detailRouter = try XCTUnwrap(capturedDetailRouter)
+        detailRouter.addScreenToQueue(destination: AnyDestination(id: "B", animates: false) { _ in
+            Text("Detail B").navigationTitle("Detail B")
+        })
+        detailRouter.showNextScreen()
+        _ = try await navigationController(showing: "Detail B", in: controller)
+
+        for sizeClass in [UIUserInterfaceSizeClass.compact, .regular, .compact] {
+            controller.traitOverrides.horizontalSizeClass = sizeClass
+            controller.view.layoutIfNeeded()
+            _ = try await navigationController(showing: "Detail B", in: controller)
+            XCTAssertEqual(router.activeScreens[1].screens.map(\.id), ["A", "B"])
+            XCTAssertEqual(router.selectedSplitViewDetailID, "A")
+        }
+
+        // No artificial delay after resizing: a completed native transition is enough.
+        let nestedNavigation = try await navigationController(showing: "Detail B", in: controller)
+        nestedNavigation.popViewController(animated: false)
+        let selectedNavigation = try await navigationController(showing: "Detail A", in: controller)
+        XCTAssertEqual(router.activeScreens[1].screens.map(\.id), ["A"])
+        selectedNavigation.popViewController(animated: false)
+        _ = try await navigationController(showing: "Sidebar", in: controller, minimumDepth: 1)
+        // The sidebar reconciliation runs after its appearance callback.
+        for _ in 0..<100 {
+            if router.selectedSplitViewDetailID == nil { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertNil(router.selectedSplitViewDetailID)
+        XCTAssertTrue(router.activeScreens[1].screens.isEmpty)
+    }
+
+    @MainActor
     private func navigationController(showing title: String, in controller: UIViewController, minimumDepth: Int = 2) async throws -> UINavigationController {
         // Appearance callbacks can precede the native column transition.
         for _ in 0..<100 {

@@ -10,6 +10,8 @@ import SwiftUI
 @MainActor
 public struct AnyDestination: Identifiable, Hashable {
     public private(set) var id: String
+    // A repeated logical route is a new presentation, with fresh view-owned state.
+    let presentationID = UUID()
     public let segue: SegueOption
     public let location: SegueLocation
     public let animates: Bool

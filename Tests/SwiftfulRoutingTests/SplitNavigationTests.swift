@@ -196,13 +196,13 @@ final class SplitNavigationTests: XCTestCase {
         XCTAssertEqual(state.path, ["B", "C"])
         XCTAssertEqual(state.popTarget(for: ["B"], modelBranch: ["A", "B", "C"], now: after), "B")
         XCTAssertEqual(state.popTarget(for: [], modelBranch: ["A", "B", "C"], now: after), "A")
-        XCTAssertFalse(state.canClearSelection(modelBranch: ["A", "B", "C"], now: after))
+        XCTAssertFalse(state.canClearSelection(modelBranch: ["A", "B", "C"]))
 
         state.synchronize(with: ["A"], now: after)
         XCTAssertTrue(state.path.isEmpty)
-        XCTAssertTrue(state.canClearSelection(modelBranch: ["A"], now: after))
+        XCTAssertTrue(state.canClearSelection(modelBranch: ["A"]))
         state.synchronize(with: [], now: after)
-        XCTAssertFalse(state.canClearSelection(modelBranch: [], now: after))
+        XCTAssertFalse(state.canClearSelection(modelBranch: []))
     }
 
     func testTransientLayoutAndStaleBranchCallbacksDoNotDismissRoutes() {
@@ -214,8 +214,7 @@ final class SplitNavigationTests: XCTestCase {
         XCTAssertNil(state.popTarget(for: [], modelBranch: ["C"], now: now.addingTimeInterval(1)))
         state.synchronize(with: ["C"], now: now)
         // A real compact back action must work immediately after selecting a detail.
-        XCTAssertTrue(state.canClearSelection(modelBranch: ["C"], now: now))
-        XCTAssertTrue(state.canClearSelection(modelBranch: ["C"], now: now.addingTimeInterval(1)))
+        XCTAssertTrue(state.canClearSelection(modelBranch: ["C"]))
     }
 
     func testImmediatePopAfterPresentationRetainsSelectedDetail() {
@@ -234,13 +233,59 @@ final class SplitNavigationTests: XCTestCase {
         let before = Date(timeIntervalSince1970: 0)
         let resized = before.addingTimeInterval(10)
         state.synchronize(with: ["A", "B"], now: before)
-        state.layoutDidChange(now: resized)
+        state.layoutDidChange()
         XCTAssertNil(state.popTarget(for: [], modelBranch: ["A", "B"], now: resized))
+        XCTAssertNil(state.popTarget(for: [], modelBranch: ["A", "B"], now: resized.addingTimeInterval(100)))
         XCTAssertEqual(state.path, ["B"])
 
         state.synchronize(with: ["A"], now: resized)
-        XCTAssertFalse(state.canClearSelection(modelBranch: ["A"], now: resized))
-        XCTAssertTrue(state.canClearSelection(modelBranch: ["A"], now: resized.addingTimeInterval(1)))
+        state.layoutDidChange()
+        XCTAssertFalse(state.canClearSelection(modelBranch: ["A"]))
+        state.didPresent(routeID: "A")
+        XCTAssertTrue(state.canClearSelection(modelBranch: ["A"]))
+    }
+
+    func testBackAfterLayoutSettlesDoesNotWaitForATimeout() {
+        var state = SplitNavigationState()
+        let now = Date()
+        state.synchronize(with: ["A", "B"], now: now)
+        state.didPresent(routeID: "B")
+        state.layoutDidChange()
+        XCTAssertNil(state.popTarget(for: [], modelBranch: ["A", "B"], now: now))
+        state.didPresent(routeID: "B")
+        XCTAssertEqual(state.popTarget(for: [], modelBranch: ["A", "B"], now: now), "A")
+    }
+
+    func testDestinationAppearanceConfirmsPopDuringLayout() {
+        var state = SplitNavigationState()
+        let now = Date()
+        state.synchronize(with: ["A", "B"], now: now)
+        state.didPresent(routeID: "B")
+        state.layoutDidChange()
+        state.didPresent(routeID: "A")
+        XCTAssertEqual(state.popTarget(for: [], modelBranch: ["A", "B"], now: now), "A")
+    }
+
+    @MainActor
+    func testModeChangesPreserveRoutesAndPresentationState() async {
+        let model = model(split: false)
+        var dismissed: [String] = []
+        await model.showScreens(routerId: "root", destinations: [
+            destination("A", onDismiss: { dismissed.append("A") }),
+            destination("B", onDismiss: { dismissed.append("B") }),
+            destination("sheet", segue: .sheet, onDismiss: { dismissed.append("sheet") }),
+            destination("sheet_detail")
+        ]).value
+        model.showAlert(routerId: "B", alert: AnyAlert(location: .currentScreen, title: "Keep me"))
+        let stacks = model.activeScreenStacks
+        for enabled in [true, false, true] {
+            model.navigationSplitView = enabled
+            XCTAssertEqual(model.activeScreenStacks, stacks)
+            XCTAssertEqual(model.selectedSplitViewDetailID(routerId: "root"), enabled ? "A" : nil)
+            XCTAssertNil(model.selectedSplitViewDetailID(routerId: "sheet"))
+            XCTAssertEqual(model.activeAlert["B"]?.title, "Keep me")
+            XCTAssertTrue(dismissed.isEmpty)
+        }
     }
 
     @available(iOS 17, macOS 14, tvOS 17, watchOS 10, *)

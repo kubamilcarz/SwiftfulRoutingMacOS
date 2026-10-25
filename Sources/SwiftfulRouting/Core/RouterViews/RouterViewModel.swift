@@ -9,7 +9,7 @@ import SwiftUI
 @MainActor
 final class RouterViewModel: ObservableObject {
     static let rootId = "root"
-    let navigationSplitView: Bool
+    @Published var navigationSplitView: Bool
 
     init(navigationSplitView: Bool = false) {
         self.navigationSplitView = navigationSplitView
