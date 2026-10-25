@@ -15,7 +15,7 @@ public struct AnyToast: Identifiable, Equatable {
     public private(set) var position: ToastPosition
     public private(set) var transition: AnyTransition
     public private(set) var animation: Animation
-    public private(set) var duration: TimeInterval?
+    public private(set) var duration: Duration?
     public private(set) var destination: AnyView
     public private(set) var onDismiss: (() -> Void)?
 
@@ -24,8 +24,8 @@ public struct AnyToast: Identifiable, Equatable {
     ///   - position: Stack position, inside safe areas. Newest toasts sit nearest the edge.
     ///   - transition: Custom insertion/removal transition; nil moves from the selected edge and fades.
     ///   - animation: Animation for presentation, dismissal, and stack reflow.
-    ///   - duration: Seconds from presentation until dismissal, even while covered. Nil persists
-    ///     until dismissed; nonpositive or nonfinite values dismiss immediately.
+    ///   - duration: Lifetime from presentation, even while covered. Nil persists until dismissed;
+    ///     zero or negative durations dismiss immediately.
     ///   - onDismiss: Called once when removed from routing state, before the exit animation ends.
     ///   - destination: The complete toast view, including any dismissal controls.
     public init<T: View>(
@@ -33,7 +33,7 @@ public struct AnyToast: Identifiable, Equatable {
         position: ToastPosition = .top,
         transition: AnyTransition? = nil,
         animation: Animation = .easeInOut(duration: 0.25),
-        duration: TimeInterval? = 3,
+        duration: Duration? = .seconds(3),
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder destination: () -> T
     ) {
@@ -57,7 +57,10 @@ public struct AnyToast: Identifiable, Equatable {
             "toast_is_persistent": duration == nil,
             "toast_has_on_dismiss": onDismiss != nil
         ]
-        if let duration { parameters["toast_duration"] = duration }
+        if let duration {
+            let components = duration.components
+            parameters["toast_duration"] = Double(components.seconds) + Double(components.attoseconds) / 1e18
+        }
         return parameters
     }
 }

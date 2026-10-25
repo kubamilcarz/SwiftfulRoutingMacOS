@@ -12,14 +12,4 @@ import SwiftUI
 struct ToastPresentation: Identifiable {
     let id = UUID()
     let toast: AnyToast
-
-    static func sleep(seconds: TimeInterval) async throws {
-        // Bounded chunks avoid overflowing nanoseconds for very large finite durations.
-        var remaining = seconds
-        while remaining > 0 {
-            let interval = min(remaining, 86_400)
-            try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-            remaining -= interval
-        }
-    }
 }

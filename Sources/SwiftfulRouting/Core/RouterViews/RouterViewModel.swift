@@ -14,13 +14,13 @@ final class RouterViewModel: ObservableObject {
 
     init(
         navigationSplitView: Bool = false,
-        toastSleep: @escaping @MainActor (TimeInterval) async throws -> Void = ToastPresentation.sleep(seconds:)
+        toastSleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.navigationSplitView = navigationSplitView
         self.toastSleep = toastSleep
     }
 
-    private let toastSleep: @MainActor (TimeInterval) async throws -> Void
+    private let toastSleep: @MainActor (Duration) async throws -> Void
     private var toastTimers: [UUID: Task<Void, Never>] = [:]
     private var toastRoutersBeingDismissed: Set<String> = []
     @Published private(set) var allToasts: [String: [ToastPresentation]] = [:]
@@ -912,7 +912,7 @@ extension RouterViewModel {
         logger.trackEvent(event: Event.toastShow(toast: toast))
 
         if let duration = toast.duration {
-            if duration.isFinite && duration > 0 {
+            if duration > .zero {
                 let sleep = toastSleep
                 let presentationId = presentation.id
                 toastTimers[presentationId] = Task { [weak self] in

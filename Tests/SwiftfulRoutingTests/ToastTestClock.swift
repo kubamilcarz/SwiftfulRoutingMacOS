@@ -12,13 +12,13 @@ import Foundation
 /// A deliberately cancellation-insensitive sleeper: routing must reject a stale wakeup itself.
 @MainActor
 final class ToastTestClock {
-    private(set) var durations: [TimeInterval] = []
+    private(set) var durations: [Duration] = []
     private(set) var cancellations: [Int: Bool] = [:]
     private var sleepers: [Int: CheckedContinuation<Void, Never>] = [:]
     private var startWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
     private var finishWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
 
-    func sleep(_ duration: TimeInterval) async {
+    func sleep(_ duration: Duration) async {
         let index = durations.count
         durations.append(duration)
         await withCheckedContinuation { continuation in

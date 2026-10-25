@@ -838,7 +838,7 @@ router.showToast(
     position: .bottomTrailing,
     transition: .scale.combined(with: .opacity),
     animation: .spring(response: 0.3),
-    duration: 5,
+    duration: .seconds(5),
     onDismiss: { print("Upload toast dismissed") }
 ) {
     Label("Upload complete", systemImage: "checkmark.circle.fill")
@@ -873,7 +873,8 @@ Each position has an independent stack with 8-point spacing and 16-point safe-ar
 New toasts sit nearest the selected edge. Large views in separate stacks can overlap.
 
 Each toast has its own timer, starting when presented and continuing while the screen is
-covered. A `nil` duration persists until dismissal; nonpositive or nonfinite durations dismiss
+covered. Durations use Swift's `Duration`, such as `.seconds(3)` or `.milliseconds(500)`.
+A `nil` duration persists until dismissal; zero or negative durations dismiss
 immediately. Reusing an active ID replaces that toast and restarts its timer. IDs are local to
 each router. Removing a screen dismisses its toasts and cancels their timers.
 
@@ -1478,7 +1479,7 @@ This package includes a `.claude/swiftful-routing-rules.md` with usage guideline
 
 - **iOS 16.0+**
 - **macOS 12.0+**
-- **tvOS 14.0+**
+- **tvOS 16.0+**
 
 ## License
 

@@ -30,11 +30,12 @@ struct ToastHostingTests {
         #expect(await waitUntil(host) { capturedRouter != nil })
         let router = try #require(capturedRouter)
         for position in ToastPosition.allCases {
-            router.showToast(id: position.rawValue, position: position, animation: .linear(duration: 0), duration: nil) {
+            router.showToast(id: position.rawValue, position: position, animation: .linear(duration: 0), duration: .seconds(60)) {
                 ToastHostingProbe(id: position.rawValue, onFrame: { frames[position.rawValue] = $0 }, onAppear: { _ in })
             }
         }
         #expect(await waitUntil(host) { frames.count == 6 })
+        #expect(router.activeToasts.allSatisfy { $0.duration == .seconds(60) })
         for position in ToastPosition.allCases {
             let frame = try #require(frames[position.rawValue])
             let expectedX: CGFloat

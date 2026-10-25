@@ -342,8 +342,8 @@ public struct AnyRouter: Sendable, Router {
     ///   - position: Edge and horizontal alignment of the toast stack.
     ///   - transition: Insertion/removal transition; nil moves from the selected edge and fades.
     ///   - animation: Animation for presentation, dismissal, and stack reflow.
-    ///   - duration: Seconds from presentation, including time while covered. Nil persists until
-    ///     dismissed; nonpositive or nonfinite values dismiss immediately.
+    ///   - duration: Lifetime from presentation, including time while covered. Nil persists until
+    ///     dismissed; zero or negative durations dismiss immediately.
     ///   - onDismiss: Called once when removed, before the exit animation ends.
     ///   - destination: The complete toast view.
     @MainActor public func showToast<T: View>(
@@ -351,7 +351,7 @@ public struct AnyRouter: Sendable, Router {
         position: ToastPosition = .top,
         transition: AnyTransition? = nil,
         animation: Animation = .easeInOut(duration: 0.25),
-        duration: TimeInterval? = 3,
+        duration: Duration? = .seconds(3),
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder destination: () -> T
     ) {

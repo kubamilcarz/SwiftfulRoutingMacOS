@@ -14,12 +14,18 @@ import Testing
 @MainActor
 @Suite(.timeLimit(.minutes(1)))
 struct ToastRoutingTests {
+    @Test func fractionalDurationIsPreservedAndLoggedInSeconds() {
+        let toast = AnyToast(duration: .milliseconds(250)) { Text("Toast") }
+        #expect(toast.duration == .milliseconds(250))
+        #expect(toast.eventParameters["toast_duration"] as? Double == 0.25)
+    }
+
     @Test func defaultsAndManualDismissal() {
         let model = RouterViewModel()
         var dismissals: [String] = []
         let toast = AnyToast { Text("Default") }
         #expect(toast.position == .top)
-        #expect(toast.duration == 3)
+        #expect(toast.duration == .seconds(3))
         for id in ["first", "second"] {
             model.showToast(routerId: "root", toast: AnyToast(id: id, duration: nil, onDismiss: {
                 dismissals.append(id)
@@ -39,16 +45,16 @@ struct ToastRoutingTests {
         let clock = ToastTestClock()
         let model = RouterViewModel(toastSleep: clock.sleep)
         var dismissals: [String] = []
-        for (id, duration) in [("slow", 10.0), ("fast", 1.0)] {
+        for (id, duration) in [("slow", Duration.seconds(10)), ("fast", .milliseconds(250))] {
             model.showToast(routerId: "root", toast: AnyToast(id: id, duration: duration, onDismiss: {
                 dismissals.append(id)
             }) { Text(id) })
         }
         model.showToast(routerId: "root", toast: AnyToast(id: "persistent", duration: nil) { Text("Persistent") })
         await clock.waitForSleeps(2)
-        #expect(clock.durations.sorted() == [1, 10])
-        let fastIndex = try #require(clock.durations.firstIndex(of: 1))
-        let slowIndex = try #require(clock.durations.firstIndex(of: 10))
+        #expect(clock.durations.sorted() == [.milliseconds(250), .seconds(10)])
+        let fastIndex = try #require(clock.durations.firstIndex(of: .milliseconds(250)))
+        let slowIndex = try #require(clock.durations.firstIndex(of: .seconds(10)))
         await clock.finish(fastIndex)
         #expect(dismissals == ["fast"])
         #expect(model.allToasts["root"]?.map(\.toast.id) == ["slow", "persistent"])
@@ -94,8 +100,8 @@ struct ToastRoutingTests {
         #expect(model.allToasts["root"]?.count == 1)
     }
 
-    @Test(arguments: [0.0, -1, .infinity, -.infinity, .nan])
-    func invalidDurationDismissesImmediately(duration: TimeInterval) {
+    @Test(arguments: [Duration.zero, .seconds(-1), .milliseconds(-1)])
+    func nonpositiveDurationDismissesImmediately(duration: Duration) {
         let model = RouterViewModel()
         var dismissals = 0
         model.showToast(routerId: "root", toast: AnyToast(duration: duration, onDismiss: { dismissals += 1 }) { Text("Toast") })
