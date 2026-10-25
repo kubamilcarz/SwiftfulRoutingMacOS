@@ -218,6 +218,17 @@ final class SplitNavigationTests: XCTestCase {
         XCTAssertTrue(state.canClearSelection(modelBranch: ["C"], now: now.addingTimeInterval(1)))
     }
 
+    func testImmediatePopAfterPresentationRetainsSelectedDetail() {
+        var state = SplitNavigationState()
+        let now = Date()
+        state.synchronize(with: ["A", "B"], now: now)
+        XCTAssertNil(state.popTarget(for: [], modelBranch: ["A", "B"], now: now))
+        state.didPresent(routeID: "A")
+        XCTAssertNil(state.popTarget(for: [], modelBranch: ["A", "B"], now: now))
+        state.didPresent(routeID: "B")
+        XCTAssertEqual(state.popTarget(for: [], modelBranch: ["A", "B"], now: now), "A")
+    }
+
     func testChangingSizeClassPreservesSelectionAndDetailHistory() {
         var state = SplitNavigationState()
         let before = Date(timeIntervalSince1970: 0)

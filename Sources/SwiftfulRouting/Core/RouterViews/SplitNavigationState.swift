@@ -19,6 +19,12 @@ struct SplitNavigationState {
         layoutChangedAt = now
     }
 
+    mutating func didPresent(routeID: String) {
+        if branch.last == routeID {
+            growthGuard = nil
+        }
+    }
+
     private func isChangingLayout(now: Date) -> Bool {
         layoutChangedAt.map { now.timeIntervalSince($0) <= 0.5 } ?? false
     }

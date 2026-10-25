@@ -24,6 +24,8 @@ struct SplitNavigationSupportView<Detail: View>: View {
     @State private var localColumnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
     @State private var navigationState = SplitNavigationState()
+    @State private var detailPath: [String] = []
+    @State private var isSidebarVisible = false
 
     private var destinations: [AnyDestination] { viewModel.splitViewDestinations }
     private var modelBranch: [String] { destinations.map(\.id) }
@@ -41,32 +43,17 @@ struct SplitNavigationSupportView<Detail: View>: View {
     var body: some View {
         NavigationSplitView(
             columnVisibility: columnVisibility ?? $localColumnVisibility,
-            preferredCompactColumn: Binding(
-                get: { preferredCompactColumn },
-                set: { column in
-                    // This setter represents native column navigation, not our model-to-UI updates.
-                    if column == .sidebar, isCompact,
-                       navigationState.canClearSelection(modelBranch: modelBranch) {
-                        viewModel.dismissPushStack(routeId: router.id, animates: true)
-                        synchronize()
-                    } else if modelBranch.isEmpty || column == .detail || !isCompact {
-                        preferredCompactColumn = column
-                    }
-                }
-            )
+            preferredCompactColumn: $preferredCompactColumn
         ) {
             sidebar
                 .resizeableSheetBackgroundModifier(viewModel: viewModel, routerId: router.id)
-        } detail: {
-            NavigationStack(path: Binding(
-                get: { navigationState.path },
-                set: { newPath in
-                    if let target = navigationState.popTarget(for: newPath, modelBranch: modelBranch) {
-                        viewModel.dismissScreens(to: target, animates: true)
-                        synchronize()
-                    }
+                .onAppear {
+                    isSidebarVisible = true
+                    clearSelectionFromSidebarIfNeeded()
                 }
-            )) {
+                .onDisappear { isSidebarVisible = false }
+        } detail: {
+            NavigationStack(path: $detailPath) {
                 Group {
                     if let selected = destinations.first {
                         selected.destination
@@ -78,12 +65,26 @@ struct SplitNavigationSupportView<Detail: View>: View {
                     if let destination = destinations.first(where: { $0.id == routeID })
                         ?? viewModel.allDestinationsById[routeID] {
                         destination.destination
+                            .onAppear { navigationState.didPresent(routeID: routeID) }
                     }
                 }
             }
         }
         .onAppear { synchronize() }
         .onChange(of: modelBranch) { _, _ in synchronize() }
+        .onChange(of: detailPath) { _, path in
+            if let target = navigationState.popTarget(for: path, modelBranch: modelBranch) {
+                viewModel.dismissScreens(to: target, animates: true)
+                synchronize()
+            } else if path != navigationState.path {
+                detailPath = navigationState.path
+            }
+        }
+        .onChange(of: preferredCompactColumn) { _, column in
+            if column == .sidebar {
+                clearSelectionFromSidebarIfNeeded()
+            }
+        }
         #if os(iOS)
         .onChange(of: horizontalSizeClass) { _, _ in
             navigationState.layoutDidChange()
@@ -91,13 +92,30 @@ struct SplitNavigationSupportView<Detail: View>: View {
         #endif
     }
 
+    private func clearSelectionFromSidebarIfNeeded() {
+        // Popping detail history can also update the preferred column. Only an actually
+        // visible sidebar represents returning across columns, and layout callbacks must settle first.
+        Task { @MainActor in
+            await Task.yield()
+            guard isCompact, isSidebarVisible, preferredCompactColumn == .sidebar,
+                  navigationState.canClearSelection(modelBranch: modelBranch) else { return }
+            viewModel.dismissPushStack(routeId: router.id, animates: true)
+            synchronize()
+        }
+    }
+
     private func synchronize() {
         let branch = modelBranch
         let selectionChanged = navigationState.branch.first != branch.first
         navigationState.synchronize(with: branch)
+        if detailPath != navigationState.path {
+            detailPath = navigationState.path
+        }
         if branch.isEmpty {
-            preferredCompactColumn = .sidebar
-        } else if selectionChanged {
+            if preferredCompactColumn != .sidebar {
+                preferredCompactColumn = .sidebar
+            }
+        } else if selectionChanged, preferredCompactColumn != .detail {
             preferredCompactColumn = .detail
         }
     }

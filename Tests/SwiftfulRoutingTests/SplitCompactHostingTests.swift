@@ -15,11 +15,14 @@ import XCTest
 final class SplitCompactHostingTests: XCTestCase {
     @available(iOS 17, *)
     @MainActor
-    func testNativeCompactBackClearsDetailSelection() async throws {
+    func testNativeCompactNavigationDrillsAndReturnsToSidebar() async throws {
         let sidebarAppeared = expectation(description: "Compact sidebar appeared")
         let detailAppeared = expectation(description: "Compact detail appeared")
-        let sidebarReturned = expectation(description: "Native back returned to sidebar")
+        let nestedDetailAppeared = expectation(description: "Nested compact detail appeared")
+        var sidebarReturned: XCTestExpectation?
+        var selectionCleared: XCTestExpectation?
         var capturedRouter: AnyRouter?
+        var capturedDetailRouter: AnyRouter?
         var awaitingReturn = false
         let root = RouterView(navigationSplitView: true) { router in
             Text("Sidebar")
@@ -30,8 +33,11 @@ final class SplitCompactHostingTests: XCTestCase {
                         sidebarAppeared.fulfill()
                     } else if awaitingReturn {
                         awaitingReturn = false
-                        sidebarReturned.fulfill()
+                        sidebarReturned?.fulfill()
                     }
+                }
+                .onChange(of: router.selectedSplitViewDetailID) { _, selection in
+                    if selection == nil { selectionCleared?.fulfill() }
                 }
         }
         let controller = UIHostingController(rootView: root)
@@ -45,30 +51,71 @@ final class SplitCompactHostingTests: XCTestCase {
         controller.view.layoutIfNeeded()
         await fulfillment(of: [sidebarAppeared], timeout: 5)
         let router = try XCTUnwrap(capturedRouter)
-        router.addScreenToQueue(destination: AnyDestination(id: "A", animates: false) { _ in
+        router.addScreenToQueue(destination: AnyDestination(id: "A", animates: false) { detailRouter in
             Text("Detail A")
                 .navigationTitle("Detail A")
-                .onAppear { detailAppeared.fulfill() }
+                .onAppear {
+                    if capturedDetailRouter == nil {
+                        capturedDetailRouter = detailRouter
+                        detailAppeared.fulfill()
+                    }
+                }
         })
         router.showNextScreen()
         controller.view.layoutIfNeeded()
         await fulfillment(of: [detailAppeared], timeout: 5)
         XCTAssertEqual(router.selectedSplitViewDetailID, "A")
+        XCTAssertNotNil(controller.view.window)
 
-        let navigationController = try XCTUnwrap(
-            descendants(of: controller).compactMap { $0 as? UINavigationController }
-                .last(where: { $0.viewControllers.count > 1 && $0.view.window != nil })
-        )
-        if let transition = navigationController.transitionCoordinator {
-            let settled = expectation(description: "Native column transition completed")
-            transition.animate(alongsideTransition: nil) { _ in settled.fulfill() }
-            await fulfillment(of: [settled], timeout: 3)
-        }
+        _ = try await navigationController(showing: "Detail A", in: controller)
+        let detailRouter = try XCTUnwrap(capturedDetailRouter)
+        detailRouter.addScreenToQueue(destination: AnyDestination(id: "B", animates: false) { _ in
+            Text("Detail B")
+                .navigationTitle("Detail B")
+                .onAppear { nestedDetailAppeared.fulfill() }
+        })
+        detailRouter.showNextScreen()
+        XCTAssertEqual(router.activeScreens[1].screens.map(\.id), ["A", "B"])
+        let nestedNavigation = try await navigationController(showing: "Detail B", in: controller)
+        await fulfillment(of: [nestedDetailAppeared], timeout: 5)
+        XCTAssertEqual(router.activeScreens[1].screens.map(\.id), ["A", "B"])
+        nestedNavigation.popViewController(animated: false)
+        let navigationController = try await navigationController(showing: "Detail A", in: controller)
+        XCTAssertEqual(router.activeScreens[1].screens.map(\.id), ["A"])
+        XCTAssertEqual(router.selectedSplitViewDetailID, "A")
+
+        let returned = expectation(description: "Native back returned to sidebar")
+        let cleared = expectation(description: "Native back cleared model selection")
+        sidebarReturned = returned
+        selectionCleared = cleared
         awaitingReturn = true
         navigationController.popViewController(animated: false)
         controller.view.layoutIfNeeded()
-        await fulfillment(of: [sidebarReturned], timeout: 5)
+        await fulfillment(of: [returned, cleared], timeout: 5)
         XCTAssertNil(router.selectedSplitViewDetailID)
+        _ = try await self.navigationController(showing: "Sidebar", in: controller, minimumDepth: 1)
+    }
+
+    @MainActor
+    private func navigationController(showing title: String, in controller: UIViewController, minimumDepth: Int = 2) async throws -> UINavigationController {
+        // Appearance callbacks can precede the native column transition.
+        for _ in 0..<100 {
+            controller.view.layoutIfNeeded()
+            if let navigation = descendants(of: controller).compactMap({ $0 as? UINavigationController })
+                .last(where: { $0.topViewController?.navigationItem.title == title && $0.viewControllers.count >= minimumDepth }) {
+                if let transition = navigation.transitionCoordinator {
+                    let settled = expectation(description: "Native navigation transition completed")
+                    transition.animate(alongsideTransition: nil) { _ in settled.fulfill() }
+                    await fulfillment(of: [settled], timeout: 3)
+                }
+                return navigation
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let hierarchy = descendants(of: controller).map { child in
+            "\(type(of: child)): title=\(child.navigationItem.title ?? "nil")"
+        }.joined(separator: "\n")
+        return try XCTUnwrap(nil as UINavigationController?, "Native navigation did not show \(title):\n\(hierarchy)")
     }
 
     @MainActor
