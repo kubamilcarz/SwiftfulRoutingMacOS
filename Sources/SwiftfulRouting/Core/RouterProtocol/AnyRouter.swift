@@ -12,14 +12,16 @@ public struct AnyRouter: Sendable, Router {
     public let id: String
     public let rootRouterId: String
     private let object: any Router
-    // Changes the environment value when selection changes, so sidebar consumers redraw.
+    // Changes the environment value when selection or toast presentations change.
     private let selectionIdentity: String?
+    private let toastIdentity: [UUID]
 
-    init(id: String, rootRouterId: String, object: any Router, selectionIdentity: String? = nil) {
+    init(id: String, rootRouterId: String, object: any Router, selectionIdentity: String? = nil, toastIdentity: [UUID] = []) {
         self.id = id
         self.rootRouterId = rootRouterId
         self.object = object
         self.selectionIdentity = selectionIdentity
+        self.toastIdentity = toastIdentity
     }
     
     /// Active screen stacks in this RouterView's heirarchy.
@@ -702,7 +704,8 @@ public struct AnyRouter: Sendable, Router {
 extension AnyRouter: Identifiable, Hashable, Equatable {
 
     public static func == (lhs: AnyRouter, rhs: AnyRouter) -> Bool {
-        lhs.id == rhs.id && lhs.rootRouterId == rhs.rootRouterId && lhs.selectionIdentity == rhs.selectionIdentity
+        lhs.id == rhs.id && lhs.rootRouterId == rhs.rootRouterId
+            && lhs.selectionIdentity == rhs.selectionIdentity && lhs.toastIdentity == rhs.toastIdentity
     }
 
     public func hash(into hasher: inout Hasher) {

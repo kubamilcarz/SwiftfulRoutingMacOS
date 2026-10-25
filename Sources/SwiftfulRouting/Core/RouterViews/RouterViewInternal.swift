@@ -28,7 +28,8 @@ struct RouterViewInternal<Content: View>: View, Router {
             id: routerId,
             rootRouterId: rootRouterInfo?.id ?? "",
             object: self,
-            selectionIdentity: selectedSplitViewDetailID
+            selectionIdentity: selectedSplitViewDetailID,
+            toastIdentity: (viewModel.allToasts[routerId] ?? []).map(\.id)
         )
     }
         

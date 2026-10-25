@@ -14,6 +14,39 @@ import Testing
 
 @MainActor
 struct ToastHostingTests {
+    @available(macOS 14, *)
+    @Test func environmentConsumersObserveToastPresentationReplacementAndDismissal() async throws {
+        var capturedRouter: AnyRouter?
+        var observedToasts: [AnyToast] = []
+        var observedHasToast = false
+        let root = RouterView(addNavigationStack: false) { router in
+            ToastStateProbe { toasts, hasToast in
+                observedToasts = toasts
+                observedHasToast = hasToast
+            }
+            .onAppear { capturedRouter = router }
+        }
+        let (window, host) = host(root)
+        defer { window.contentView = nil }
+        try #require(await waitUntil(host) { capturedRouter != nil })
+        let router = try #require(capturedRouter)
+        defer { router.dismissAllToasts() }
+
+        router.showToast(id: "toast", animation: .linear(duration: 0), duration: nil) { Text("Persistent") }
+        try #require(await waitUntil(host) { observedHasToast && observedToasts.map(\.id) == ["toast"] })
+
+        // A replacement must invalidate consumers even though its public ID is unchanged.
+        router.showToast(id: "toast", animation: .linear(duration: 0), duration: .seconds(60)) { Text("Replacement") }
+        try #require(await waitUntil(host) { observedToasts.first?.duration == .seconds(60) })
+
+        router.showToast(id: "second", animation: .linear(duration: 0), duration: nil) { Text("Second") }
+        try #require(await waitUntil(host) { observedToasts.map(\.id) == ["toast", "second"] })
+        router.dismissToast(id: "toast")
+        try #require(await waitUntil(host) { observedHasToast && observedToasts.map(\.id) == ["second"] })
+        router.dismissAllToasts()
+        #expect(await waitUntil(host) { !observedHasToast && observedToasts.isEmpty })
+    }
+
     @Test(arguments: [LayoutDirection.leftToRight, .rightToLeft])
     func positionsRespectSafeAreasAndLanguageDirection(direction: LayoutDirection) async throws {
         var capturedRouter: AnyRouter?

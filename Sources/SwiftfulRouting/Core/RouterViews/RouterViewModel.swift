@@ -314,6 +314,7 @@ extension RouterViewModel {
     
     // Immediately show the destination screen
     private func showScreen(routerId: String, destination: AnyDestination) {
+        let destination = destination.newPresentation()
         if navigationSplitView, destination.segue == .push,
            case .insert = destination.location,
            let stackIndex = activeScreenStacks.lastIndexWhereChildStackContains(routerId: routerId),

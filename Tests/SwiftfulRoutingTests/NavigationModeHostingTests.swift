@@ -170,6 +170,57 @@ final class NavigationModeHostingTests: XCTestCase {
         XCTAssertEqual(dismissed, ["B", "A", "new_A"])
     }
 
+    func testReusingPrebuiltDestinationCreatesFreshViewState() async throws {
+        try await verifyReplacementResetsViewState(nested: false, reuseDestination: true)
+    }
+
+    func testReplacingNestedDestinationWithSameIDCreatesFreshViewState() async throws {
+        try await verifyReplacementResetsViewState(nested: true, reuseDestination: false)
+    }
+
+    private func verifyReplacementResetsViewState(nested: Bool, reuseDestination: Bool) async throws {
+        let state = ModeHostingState(split: true)
+        let host = ModeHostingWindow(state: state)
+        defer { host.close() }
+        try await waitUntil { state.model?.activeScreenStacks.count == 2 && state.router != nil }
+        let router = try XCTUnwrap(state.router)
+        let model = try XCTUnwrap(state.model)
+        if nested {
+            router.addScreenToQueue(destination:
+                AnyDestination(id: "A", animates: false) { _ in ModeDestinationProbe(id: "A", state: state) }
+            )
+            router.showNextScreen()
+            try await waitUntil { state.tokens["A"] != nil }
+        }
+        let ancestorToken = state.tokens["A"]
+        let callerID = nested ? "A" : router.id
+        let routeID = nested ? "B" : "A"
+        var dismissals = 0
+        let makeDestination = {
+            AnyDestination(id: routeID, animates: false, onDismiss: { dismissals += 1 }) { _ in
+                ModeDestinationProbe(id: routeID, state: state)
+            }
+        }
+        let destination = makeDestination()
+        model.addScreensToQueue(routerId: callerID, destinations: [destination])
+        model.showNextScreen(routerId: callerID)
+        try await waitUntil { state.tokens[routeID] != nil }
+        let originalToken = try XCTUnwrap(state.tokens[routeID])
+
+        await model.showScreens(routerId: callerID, destinations: [reuseDestination ? destination : makeDestination()]).value
+        try await waitUntil { state.tokens[routeID] != originalToken }
+        XCTAssertEqual(router.activeScreens[1].screens.map(\.id), nested ? ["A", "B"] : ["A"])
+        XCTAssertEqual(dismissals, 1)
+        if nested {
+            router.dismissLastScreen(animates: false)
+            XCTAssertEqual(state.tokens["A"], ancestorToken)
+            XCTAssertEqual(router.selectedSplitViewDetailID, "A")
+        } else {
+            router.dismissPushStack(animates: false)
+        }
+        XCTAssertEqual(dismissals, 2)
+    }
+
     private func waitUntil(file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) async throws {
         for _ in 0..<150 {
             #if os(macOS)

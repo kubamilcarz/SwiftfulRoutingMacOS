@@ -73,6 +73,7 @@ struct SplitNavigationSupportView<Detail: View>: View {
                     if let destination = destinations.first(where: { $0.id == routeID })
                         ?? viewModel.allDestinationsById[routeID] {
                         destination.destination
+                            .id(destination.presentationID)
                             .onAppear { didPresent(routeID: routeID) }
                     }
                 }
